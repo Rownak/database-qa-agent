@@ -102,9 +102,11 @@ Every tool returns `{"status": "success", ...}` or `{"status": "error", "error_m
    - XLSX is opened with `pd.ExcelFile(engine="openpyxl")`.
    - A decode or parse error gives "Could not read the file: \<reason\>."
 4. **Not empty:** after columns and rows that are completely empty are dropped, there must be at least 1 row and at least 1 column.
-5. **Headers usable:**
+5. **Header row present and valid.** The uploaded file must have a header row. After empty columns are dropped, the checks run in this order and the first failure stops ingestion:
    - If *every* header is auto-generated (`Unnamed: N`), the result is "No header row detected."
-   - If *some* remaining column has a blank header, the result is "Column N has no header."
+   - If *some* column has a blank header, the result is "Column N has no header."
+   - Every header must be a **string**. A header that is a plain number (for example `1001` or `2024.5`) is rejected with "Column N header must be text, not a number: '1001'." This also catches files whose first row is data.
+   - Headers must be **unique**. Two headers are duplicates if they are equal after trimming and cleaning (so `Order ID` and `order_id` clash). The result is "Duplicate column name: 'A' (column i) and 'B' (column j)." Nothing is renamed automatically.
 
 **Excel worksheets:** the app reads `ExcelFile.sheet_names` and loads only `sheet_names[0]`. If there are more sheets, the result includes `ignored_sheets`, and the UI shows: "Loaded sheet 'X'. Ignored: 'Y', 'Z'."
 
@@ -115,7 +117,7 @@ Every tool returns `{"status": "success", ...}` or `{"status": "error", "error_m
   - trim, lowercase, and replace each run of non-alphanumeric characters with `_`
   - strip leading and trailing `_`
   - add a `c_` prefix if the name starts with a digit
-  - if two names collide, add `_2`, `_3`, …
+  - names are unique by this point (validation step 5 rejects duplicates), so no collision handling is needed
 - The map from cleaned names to original names is saved in session state and shown by `get_table_info`.
 
 **Type inference** (one simple pass, per column):
@@ -178,7 +180,7 @@ Deletion uses `shutil.rmtree(..., ignore_errors=True)`. A failed delete is logge
 
 - [ ] `ingest` loads `sales.csv` and `sales.xlsx` with the expected row and column counts and cleaned names.
 - [ ] `multi_sheet.xlsx` loads only the first sheet and reports the ignored sheet names.
-- [ ] A `.txt` file, an empty CSV, a corrupt `.xlsx`, and a headerless CSV each return the expected error, and no `data.db` is created.
+- [ ] A `.txt` file, an empty CSV, a corrupt `.xlsx`, a headerless CSV, a CSV with a numeric header, and a CSV with duplicate headers each return the expected error, and no `data.db` is created.
 - [ ] `run_sql("SELECT COUNT(*) FROM data")` succeeds, and a query returning more than 100 rows comes back with `truncated=True`.
 - [ ] `run_sql` rejects `DELETE FROM data`, `WITH x AS (SELECT 1) DELETE FROM data`, and a query with two statements, and the row count is unchanged afterward.
 

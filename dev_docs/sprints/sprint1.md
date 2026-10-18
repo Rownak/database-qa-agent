@@ -17,28 +17,28 @@
 
 **Goal:** a standalone `spreadsheet-qa/` uv project that installs everything, can reach Gemini, and includes sample data.
 
-- [ ] Run `uv init --app --no-workspace --python 3.12 spreadsheet-qa` and delete the generated `main.py`. The `--no-workspace` flag keeps the project separate from the course's root `pyproject.toml`.
-- [ ] Run `uv add google-adk streamlit pandas openpyxl python-dotenv`. The resulting `pyproject.toml` and `uv.lock` replace the `requirements.txt` mentioned in the design.
-- [ ] Create the folders and empty files from design §3: `app.py`, `data_agent/{__init__,agent,tools,ingest,sessions}.py`, `sample_data/`, and `.streamlit/config.toml` containing `[server] maxUploadSize = 10`.
-- [ ] Add a `.env` file with `GOOGLE_API_KEY`, and add `.env` to `.gitignore`.
-- [ ] Add sample files to `sample_data/`:
-  - [ ] `sales.csv`, about 50 rows with columns `order_id`, `order date`, `category`, `sales_amount`, `revenue`
-  - [ ] `sales.xlsx`, the same data on one sheet
-  - [ ] `multi_sheet.xlsx`, with 2 sheets
-  - [ ] invalid files: `notes.txt`, `empty.csv`, `headerless.csv`, `corrupt.xlsx` (a text file renamed to `.xlsx`)
-- [ ] Run `uv run python -c "import google.adk, streamlit, pandas, openpyxl"` to confirm the installs.
+- [x] Run `uv init --app --no-workspace --python 3.12 spreadsheet-qa` and delete the generated `main.py`. The `--no-workspace` flag keeps the project separate from the course's root `pyproject.toml`.
+- [x] Run `uv add google-adk streamlit pandas openpyxl python-dotenv`. The resulting `pyproject.toml` and `uv.lock` replace the `requirements.txt` mentioned in the design.
+- [x] Create the folders and empty files from design §3: `app.py`, `data_agent/{__init__,agent,tools,ingest,sessions}.py`, `sample_data/`, and `.streamlit/config.toml` containing `[server] maxUploadSize = 10`.
+- [x] Add a `.env` file with `GOOGLE_API_KEY`, and add `.env` to `.gitignore`.
+- [x] Add sample files to `sample_data/`:
+  - [x] `sales.csv`, about 50 rows with columns `order_id`, `order date`, `category`, `sales_amount`, `revenue`
+  - [x] `sales.xlsx`, the same data on one sheet
+  - [x] `multi_sheet.xlsx`, with 2 sheets
+  - [x] invalid files: `notes.txt`, `empty.csv`, `headerless.csv`, `corrupt.xlsx` (a text file renamed to `.xlsx`), `numeric_header.csv`, `duplicate_header.csv`
+- [x] Run `uv run python -c "import google.adk, streamlit, pandas, openpyxl"` to confirm the installs.
 
 ## Phase 2 — File Ingestion (`ingest.py`, 25 min)
 
 **Goal:** a valid file becomes table `data` in a SQLite database for the session. An invalid file gives a clear error and creates no database (design §5).
 
-- [ ] Add a `load_file(uploaded_name, file_bytes, session_dir)` function that returns either a result (`db_path`, `row_count`, `column_count`, `column_map`, `schema_summary`, `ignored_sheets`, preview DataFrame) or an error message.
-- [ ] Add the validation steps in order: extension, 10 MB size limit, readable (CSV with `utf-8-sig`, XLSX with `openpyxl`), not empty after dropping fully empty rows and columns, usable headers.
-- [ ] For XLSX files, load only `sheet_names[0]` and record the other sheet names in `ignored_sheets`.
-- [ ] Clean the column names: lowercase, non-alphanumeric runs become `_`, `c_` prefix if a name starts with a digit, suffixes `_2`, `_3` for duplicates. Keep a map from cleaned to original names.
-- [ ] Infer types: numeric dtypes stay as they are. For `object` columns, try `to_numeric` first, then `to_datetime` (stored as ISO text and labeled `date`), and otherwise keep `TEXT`.
-- [ ] Write the table with `df.to_sql("data", ...)` and close the connection. Build `schema_summary` as one line per column: `name (type) — original name`.
-- [ ] Quick check: run it with `uv run python` on every sample file and confirm the counts and error messages.
+- [x] Add a `load_file(uploaded_name, file_bytes, session_dir)` function that returns either a result (`db_path`, `row_count`, `column_count`, `column_map`, `schema_summary`, `ignored_sheets`, preview DataFrame) or an error message.
+- [x] Add the validation steps in order: extension, 10 MB size limit, readable (CSV with `utf-8-sig`, XLSX with `openpyxl`), not empty after dropping fully empty rows and columns, header row valid (not blank, every header text rather than a number, no duplicate column names; design §5 step 5).
+- [x] For XLSX files, load only `sheet_names[0]` and record the other sheet names in `ignored_sheets`.
+- [x] Clean the column names: lowercase, non-alphanumeric runs become `_`, `c_` prefix if a name starts with a digit. Keep a map from cleaned to original names.
+- [x] Infer types: numeric dtypes stay as they are. For `object` columns, try `to_numeric` first, then `to_datetime` (stored as ISO text and labeled `date`), and otherwise keep `TEXT`.
+- [x] Write the table with `df.to_sql("data", ...)` and close the connection. Build `schema_summary` as one line per column: `name (type) — original name`.
+- [x] Quick check: run it with `uv run python` on every sample file and confirm the counts and error messages.
 
 ## Phase 3 — Agent Tools and SQL Safety (`tools.py`, 25 min)
 
@@ -88,7 +88,7 @@
 **Goal:** every acceptance criterion in project_description.md §6 passes when you run `uv run streamlit run app.py`.
 
 - [ ] `sales.csv` and `sales.xlsx` show the correct counts and preview. `multi_sheet.xlsx` lists the ignored sheet.
-- [ ] `notes.txt`, `empty.csv`, `headerless.csv`, and `corrupt.xlsx` each show their specific error, and no `data.db` is created.
+- [ ] `notes.txt`, `empty.csv`, `headerless.csv`, `numeric_header.csv`, `duplicate_header.csv`, and `corrupt.xlsx` each show their specific error, and no `data.db` is created.
 - [ ] "How many records are there?" returns the correct count.
 - [ ] "What is the average sales amount?" matches the pandas result.
 - [ ] "Which category has the highest total revenue?" is correct, and the expander shows a `GROUP BY` query.
