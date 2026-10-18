@@ -34,7 +34,7 @@ Objectives:
 - One file per session, loaded as one table (for example `data`). Uploading a new file replaces the current one: the old file and database are deleted first.
 - Supported formats: `.csv` (UTF-8, comma-delimited) and `.xlsx`.
 - **Excel worksheets:** only the **first worksheet** is loaded. If the workbook has more sheets, the app tells the user which sheets were ignored. Choosing a sheet, or loading several, is left for later.
-- Column names are cleaned into safe SQL identifiers (trimmed, spaces become `_`, duplicates get a suffix). The agent sees both the original and the cleaned names.
+- Column names are cleaned into safe SQL identifiers (trimmed, spaces become `_`). The agent sees both the original and the cleaned names.
 - Column types are inferred when the file is loaded (integer, real, text, date stored as text).
 - Inspection tools: row and column counts, column names and types, sample rows, and basic descriptive statistics.
 - A SQL tool that runs one read-only query written by the agent and returns at most a fixed number of rows (for example 100).
@@ -67,7 +67,7 @@ Tools find the current session's database path from the session state, so the ag
 - The file size must be under a set limit (for example 10 MB).
 - The file must open without errors (bad encoding or a corrupt workbook gives a "could not read file" message).
 - After parsing, the table must have at least one data row and at least one column.
-- Headers must be usable: no blank columns. If all headers look auto-generated (`Unnamed: 0`, …), the file is rejected with "no header row detected".
+- The file must have a header row. Headers must be non-blank, text (not plain numbers), and unique (no duplicate column names). If all headers look auto-generated (`Unnamed: 0`, …), the file is rejected with "no header row detected"; any other violation gets its own specific error.
 
 Every validation error is shown in the UI as a short, plain-language message. No database is created for a file that fails validation.
 
@@ -99,7 +99,7 @@ The demo works when all of these are true:
 
 - [ ] A valid CSV and a valid single-sheet XLSX each upload and show the correct row count, column count, and preview.
 - [ ] Uploading a multi-sheet XLSX loads only the first sheet and lists the ignored sheets.
-- [ ] Unsupported, empty, unreadable, and headerless files each show a clear, specific error, and no database is created.
+- [ ] Unsupported, empty, unreadable, and headerless, numeric-header, and duplicate-header files each show a clear, specific error, and no database is created.
 - [ ] "How many records are there?" returns the correct count.
 - [ ] "What is the average sales amount?" returns the correct value for a sample sales file.
 - [ ] "Which category has the highest total revenue?" returns the correct category, using a SQL aggregation.

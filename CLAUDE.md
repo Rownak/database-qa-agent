@@ -19,7 +19,7 @@ Prefer asking over guessing on: record schema changes, ambiguous spec details, o
 - Keep documentation updated with code changes.
 
 ## Task Execution Summary
-After completing each task phase, create a brief execution summary by creating/updating dev_docs/execution_logs/sprintN.md:
+After completing each task phase, create a brief execution summary by creating/updating dev_docs/execution_logs/sprint_N.md:
 
 - What was implemented or changed.
 - How the task was completed (approach, key decisions, and implementation details).
