@@ -24,9 +24,9 @@
 - `sales_amount` values are whole numbers (random ints); `revenue` has 2 decimals.
 - Nothing was staged or committed.
 
-## Verify
+## Commands to test
+Confirms the dependencies import.
 ```
 cd spreadsheet-qa
-uv run python -c "import google.adk, streamlit, pandas, openpyxl; print('imports ok')"   # prints: imports ok
-ls sample_data
+uv run python -m dev_test.phase_1_1
 ```
