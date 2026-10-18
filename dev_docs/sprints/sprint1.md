@@ -13,7 +13,7 @@
 
 ---
 
-## Phase 1 — uv Project and Dependency Setup (15 min)
+## Phase 1.1 — uv Project and Dependency Setup (15 min)
 
 **Goal:** a standalone `spreadsheet-qa/` uv project that installs everything, can reach Gemini, and includes sample data.
 
@@ -28,7 +28,7 @@
   - [x] invalid files: `notes.txt`, `empty.csv`, `headerless.csv`, `corrupt.xlsx` (a text file renamed to `.xlsx`), `numeric_header.csv`, `duplicate_header.csv`
 - [x] Run `uv run python -c "import google.adk, streamlit, pandas, openpyxl"` to confirm the installs.
 
-## Phase 2 — File Ingestion (`ingest.py`, 25 min)
+## Phase 1.2 — File Ingestion (`ingest.py`, 25 min)
 
 **Goal:** a valid file becomes table `data` in a SQLite database for the session. An invalid file gives a clear error and creates no database (design §5).
 
@@ -40,20 +40,20 @@
 - [x] Write the table with `df.to_sql("data", ...)` and close the connection. Build `schema_summary` as one line per column: `name (type) — original name`.
 - [x] Quick check: run it with `uv run python` on every sample file and confirm the counts and error messages.
 
-## Phase 3 — Agent Tools and SQL Safety (`tools.py`, 25 min)
+## Phase 1.3 — Agent Tools and SQL Safety (`tools.py`, 25 min)
 
 **Goal:** four read-only tools that use the session's database and never raise errors to the agent (design §4 and §6).
 
-- [ ] Add a `_connect_ro(tool_context)` helper that opens `file:{db_path}?mode=ro` using `db_path` from `tool_context.state`. Wrap it in `closing(...)` and set a progress handler that stops queries after about 5 seconds.
-- [ ] Add `get_table_info`, `get_sample_rows(n)` (at most 20 rows), and `get_column_stats(column)`. For an unknown column, return an error that lists the valid columns.
-- [ ] Add the `run_sql(query)` pre-check:
+- [x] Add a `_connect_ro(tool_context)` helper that opens `file:{db_path}?mode=ro` using `db_path` from `tool_context.state`. Wrap it in `closing(...)` and set a progress handler that stops queries after about 5 seconds.
+- [x] Add `get_table_info`, `get_sample_rows(n)` (at most 20 rows), and `get_column_stats(column)`. For an unknown column, return an error that lists the valid columns.
+- [x] Add the `run_sql(query)` pre-check:
   - strip one trailing `;`, and reject the query if any other `;` is left
   - the query must start with `SELECT` or `WITH`
   - reject the blocked keywords (`ATTACH`, `PRAGMA`, `INSERT`, `UPDATE`, `DELETE`, `DROP`, `ALTER`, `CREATE`), matched as whole words
-- [ ] In `run_sql`, fetch up to `MAX_ROWS + 1` rows and set `truncated` if there are more than `MAX_ROWS`. Cut cell text to 200 characters, and return any `sqlite3.Error` as `{"status": "error", ...}`.
-- [ ] Quick check: call the tools directly with a fake `tool_context`, a simple object whose `.state` holds `db_path`. Confirm that `DELETE FROM data` and `WITH x AS (SELECT 1) DELETE FROM data` are rejected, and that the row count is unchanged afterwards.
+- [x] In `run_sql`, fetch up to `MAX_ROWS + 1` rows and set `truncated` if there are more than `MAX_ROWS`. Cut cell text to 200 characters, and return any `sqlite3.Error` as `{"status": "error", ...}`.
+- [x] Quick check: call the tools directly with a fake `tool_context`, a simple object whose `.state` holds `db_path`. Confirm that `DELETE FROM data` and `WITH x AS (SELECT 1) DELETE FROM data` are rejected, and that the row count is unchanged afterwards.
 
-## Phase 4 — ADK Agent (`agent.py`, 15 min)
+## Phase 1.4 — ADK Agent (`agent.py`, 15 min)
 
 **Goal:** a single `root_agent` that picks the right tool, writes SQLite queries, and names its source.
 
@@ -67,7 +67,7 @@
   - end every answer with a `Source:` line
 - [ ] Quick check: write a small script that loads `sales.csv` through `load_file`, creates an ADK session with the result as its state, and asks "How many records are there?" through `Runner.run_async`. Confirm the answer is correct and a tool call appears in the events.
 
-## Phase 5 — Streamlit UI and Session Lifecycle (`app.py`, `sessions.py`, 25 min)
+## Phase 1.5 — Streamlit UI and Session Lifecycle (`app.py`, `sessions.py`, 25 min)
 
 **Goal:** the upload-and-chat flow works, each session is isolated, and cleanup happens automatically (design §1 and §7).
 
@@ -83,7 +83,7 @@
 - [ ] Chat flow: use `st.chat_input` and run `asyncio.run(...)` over `runner.run_async`. Show the final response, plus an expander labeled "How this was answered" that lists the tool calls and their arguments (the SQL). Disable chat until a file has been loaded.
 - [ ] Add an **End session** button that deletes the folder, clears `st.session_state`, and calls `st.rerun()`.
 
-## Phase 6 — End-to-End Verification (15 min)
+## Phase 1.6 — End-to-End Verification (15 min)
 
 **Goal:** every acceptance criterion in project_description.md §6 passes when you run `uv run streamlit run app.py`.
 
