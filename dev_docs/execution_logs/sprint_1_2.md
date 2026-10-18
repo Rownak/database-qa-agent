@@ -43,16 +43,10 @@
 Also checked: >10 MB bytes rejected; `1a` → `c_1a`; blank middle header → "Column 2 has no header."; bad UTF-8 → "Could not read the file: …". No session dir was created for any failure.
 
 ## Commands to test
+Loads `sales.csv` and prints the counts and schema summary.
 ```
 cd spreadsheet-qa
-uv run python -c "
-from pathlib import Path
-from data_agent.ingest import load_file
-p = Path('sample_data/sales.csv')
-r = load_file(p.name, p.read_bytes(), Path('tmp_session'))
-print(r.row_count, r.column_count); print(r.schema_summary)
-"
-rm -rf tmp_session
+uv run python -m dev_test.phase_1_2
 ```
 
 ---

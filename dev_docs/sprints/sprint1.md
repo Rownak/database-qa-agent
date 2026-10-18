@@ -52,6 +52,7 @@
   - reject the blocked keywords (`ATTACH`, `PRAGMA`, `INSERT`, `UPDATE`, `DELETE`, `DROP`, `ALTER`, `CREATE`), matched as whole words
 - [x] In `run_sql`, fetch up to `MAX_ROWS + 1` rows and set `truncated` if there are more than `MAX_ROWS`. Cut cell text to 200 characters, and return any `sqlite3.Error` as `{"status": "error", ...}`.
 - [x] Quick check: call the tools directly with a fake `tool_context`, a simple object whose `.state` holds `db_path`. Confirm that `DELETE FROM data` and `WITH x AS (SELECT 1) DELETE FROM data` are rejected, and that the row count is unchanged afterwards.
+- [x] Add short developer test scripts `spreadsheet-qa/dev_test/phase_1_1.py`, `phase_1_2.py`, `phase_1_3.py` (run with `uv run python -m dev_test.phase_1_N` from `spreadsheet-qa/`) and point each execution log's "Commands to test" at them.
 
 ## Phase 1.4 — ADK Agent (`agent.py`, 15 min)
 
