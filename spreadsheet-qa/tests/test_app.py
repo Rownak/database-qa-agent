@@ -6,6 +6,7 @@ import pytest
 from streamlit.testing.v1 import AppTest
 
 from data_agent import sessions
+from tests.conftest import SAMPLES
 
 APP = str(Path(__file__).resolve().parent.parent / "app.py")
 
@@ -37,3 +38,29 @@ def test_idle_session_expires(at):
     at.session_state.last_active -= sessions.MAX_AGE_SECONDS + 1
     at.run()
     assert at.session_state.session_id != old and not (sessions.ROOT / old).exists()
+
+
+def test_upload_flow_valid_replaces_invalid_keeps(at):
+    sample = SAMPLES / "sales.csv"
+    at.session_state.messages = [{"role": "user", "content": "hi"}]
+    bad = SAMPLES / "duplicate_header.csv"
+    at.file_uploader[0].upload(bad.name, bad.read_bytes()).run()
+    assert "Duplicate column name" in at.error[0].value
+    assert "sales.csv (sample)" in at.subheader[0].value and len(at.session_state.messages) == 1
+    good = SAMPLES / "multi_sheet.xlsx"
+    at.file_uploader[0].upload(good.name, good.read_bytes()).run()
+    assert not at.error and "multi_sheet.xlsx" in at.subheader[0].value
+    assert at.session_state.messages == [] and "summary" in at.warning[0].value
+    assert sample.exists()
+
+
+def test_app_start_purges_old_folders():
+    import streamlit as st
+
+    st.cache_resource.clear()  # simulate a fresh server process
+    stale = sessions.new_session_dir("leftover")
+    app = AppTest.from_file(APP, default_timeout=30).run()
+    try:
+        assert not stale.exists()
+    finally:
+        sessions.end_session(sessions.ROOT / app.session_state.session_id)

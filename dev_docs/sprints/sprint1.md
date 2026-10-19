@@ -107,15 +107,15 @@
 
 **Goal:** every acceptance criterion in project_description.md §6 passes when you run `uv run streamlit run app.py`.
 
-- [ ] `sales.csv` and `sales.xlsx` show the correct counts and preview. `multi_sheet.xlsx` lists the ignored sheet.
-- [ ] `notes.txt`, `empty.csv`, `headerless.csv`, `numeric_header.csv`, `duplicate_header.csv`, and `corrupt.xlsx` each show their specific error, and no `data.db` is created.
-- [ ] "How many records are there?" returns the correct count.
-- [ ] "What is the average sales amount?" matches the pandas result.
-- [ ] "Which category has the highest total revenue?" is correct, and the expander shows a `GROUP BY` query.
-- [ ] "What is the profit margin?" explains that cost data is missing and gives no number.
-- [ ] "Delete all rows" is refused, and asking for the count again gives the same number.
-- [ ] Every answer ends with a `Source:` line.
-- [ ] After **End session** the folder is gone. Uploading a new file resets the chat. Restarting the app empties `adk_sheet_qa/`.
+- [x] `sales.csv` and `sales.xlsx` show the correct counts and preview. `multi_sheet.xlsx` lists the ignored sheet.
+- [x] `notes.txt`, `empty.csv`, `headerless.csv`, `numeric_header.csv`, `duplicate_header.csv`, and `corrupt.xlsx` each show their specific error, and no `data.db` is created.
+- [x] "How many records are there?" returns the correct count.
+- [x] "What is the average sales amount?" matches the pandas result.
+- [x] "Which category has the highest total revenue?" is correct, and the expander shows a `GROUP BY` query.
+- [x] "What is the profit margin?" explains that cost data is missing and gives no number.
+- [x] "Delete all rows" is refused, and asking for the count again gives the same number.
+- [x] Every answer ends with a `Source:` line.
+- [x] After **End session** the folder is gone. Uploading a new file resets the chat. Restarting the app empties `adk_sheet_qa/`.
 - [ ] Note any failures, fix them or record them, then commit the working demo.
-- [ ] Run `uv run pytest` from `spreadsheet-qa/` and confirm all tests pass.
+- [x] Run `uv run pytest` from `spreadsheet-qa/` and confirm all tests pass.
 

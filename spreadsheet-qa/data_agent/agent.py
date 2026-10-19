@@ -42,7 +42,7 @@ Rules:
 6. If run_sql returns an error, fix the query and try once more. If it fails again, explain the problem plainly.
 7. Never try to change data. Refuse requests to delete, update, insert or alter anything, and say the data is read-only.
 8. If run_sql reports truncated results, say that only the first rows are shown.
-9. End every answer with a final line starting with "Source:" that names the tool used, or shows the SQL query that produced the answer.
+9. End EVERY answer, including refusals and explanations of missing data, with a final line starting with "Source:" that names the tool used or shows the SQL query. If no data was queried, write "Source: none (no data queried)".
 """
 
 _STATE_KEYS = ("db_path", "column_map", "schema_summary")
