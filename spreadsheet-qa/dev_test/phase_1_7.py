@@ -12,11 +12,11 @@ print('--- files ---')
 for n in ['sales.csv', 'sales.xlsx', 'multi_sheet.xlsx', 'notes.txt', 'empty.csv', 'headerless.csv',
           'numeric_header.csv', 'duplicate_header.csv', 'corrupt.xlsx']:
     sd = Path('tmp_session_17') / n
-    r = load_file(n, (S / n).read_bytes(), sd)
+    r = load_file(n, (Path('data_agent/sample_data') if n == 'sales.csv' else S).joinpath(n).read_bytes(), sd)
     print(n, '->', r.message if isinstance(r, IngestError) else (r.row_count, r.column_count, r.ignored_sheets),
           '| db created:', (sd / 'data.db').exists())
 
-df = pd.read_csv(S / 'sales.csv')
+df = pd.read_csv('data_agent/sample_data/sales.csv')
 print('--- pandas ---')
 print('avg sales_amount:', df['sales_amount'].mean())
 print('top revenue category:', df.groupby('category')['revenue'].sum().idxmax())

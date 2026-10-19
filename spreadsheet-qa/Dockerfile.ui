@@ -1,0 +1,21 @@
+# Streamlit UI image (phase 2.3). Contains no ADK: it only calls the backend API.
+FROM python:3.12-slim
+
+WORKDIR /app
+ENV PYTHONUNBUFFERED=1
+
+COPY requirements-ui.txt .
+RUN pip install --no-cache-dir -r requirements-ui.txt
+
+COPY .streamlit/ .streamlit/
+COPY app.py ui_client.py ./
+# No data_agent/__init__.py on purpose: it imports the agent (and ADK). Python treats
+# the folder as a namespace package, so ingest and sessions still import normally.
+COPY data_agent/ingest.py data_agent/sessions.py data_agent/
+COPY data_agent/sample_data/ data_agent/sample_data/
+
+RUN useradd --create-home appuser
+USER appuser
+
+# Cloud Run sets PORT; the shell form expands it.
+CMD streamlit run app.py --server.port=$PORT --server.address=0.0.0.0 --server.headless=true

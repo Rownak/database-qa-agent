@@ -5,15 +5,15 @@ from types import SimpleNamespace
 
 import pytest
 
-from data_agent.ingest import load_file
+from data_agent.ingest import SAMPLE_FILE, load_file
 
-SAMPLES = Path(__file__).resolve().parent.parent / "sample_data"
+SAMPLES = Path(__file__).resolve().parent.parent / "sample_data"  # every sample except sales.csv
 
 
 @pytest.fixture
 def loaded(tmp_path):
     """Returns the IngestResult for sales.csv loaded into a temp session dir."""
-    f = SAMPLES / "sales.csv"
+    f = SAMPLE_FILE
     return load_file(f.name, f.read_bytes(), tmp_path / "session")
 
 
@@ -27,3 +27,9 @@ def ctx(loaded):
             "schema_summary": loaded.schema_summary,
         }
     )
+
+
+@pytest.fixture(autouse=True)
+def _local_mode(monkeypatch):
+    """Tests run in local (in-process) mode unless they set API_URL themselves."""
+    monkeypatch.delenv("API_URL", raising=False)
