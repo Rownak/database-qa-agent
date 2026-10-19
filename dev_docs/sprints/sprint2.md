@@ -92,7 +92,7 @@
 
 **Goal:** a private Cloud Run service running the ADK API server.
 
-- [ ] Deploy from `spreadsheet-qa/` with ADK's built-in command:
+- [x] Deploy from `spreadsheet-qa/` with ADK's built-in command:
   ```
   uv run adk deploy cloud_run --project=<PROJECT_ID> --region=us-central1 \
     --service_name=data-qa-api --app_name=data_agent --session_service_uri=memory:// \
@@ -102,12 +102,12 @@
     --cpu=1 --memory=512Mi --min-instances=0 --max-instances=1 --concurrency=10 --timeout=120
   ```
   Don't add `--with_ui`. Everything after `--` is handed to `gcloud run deploy` (the installed ADK has `extra_gcloud_args`). If a flag doesn't take effect, apply it with `gcloud run services update data-qa-api ...`.
-- [ ] Confirm that `gcloud run services describe data-qa-api` shows the service account, the secret, 1 CPU, 512Mi, min 0 and max 1.
-- [ ] Smoke test with a user token:
+- [x] Confirm that `gcloud run services describe data-qa-api` shows the service account, the secret, 1 CPU, 512Mi, min 0 and max 1.
+- [x] Smoke test with a user token:
   - Run `curl -H "Authorization: Bearer $(gcloud auth print-identity-token)" $API_URL/list-apps`; it should return `data_agent`.
   - Create a session, then call `/run` with "How many records are there?" (expected answer: 50).
   - Without a token, the API should return 403.
-- [ ] Check Cloud Logging for the startup log and the "session data built" log line. Look at the memory-utilization metric after a few questions.
+- [x] Check Cloud Logging for the startup log and the "session data built" log line. Look at the memory-utilization metric after a few questions.
 
 ## Phase 2.5 — Deploy the UI (`data-qa-ui`)
 
