@@ -18,11 +18,15 @@ Browser ──upload──▶ app.py ──▶ ingest.py ──▶ <temp>/<sessi
                       └──── final answer ◀──── tools.py ──read-only──▶ data.db
 ```
 
+**Session start**
+
+Every new session, in Streamlit or in ADK Web, starts with table `data` loaded from `sample_data/sales.csv` (through the same `load_file`), so the user can ask questions right away. Streamlit does this when it creates the session. ADK Web does it in the agent's `before_agent_callback` (§4), because it creates sessions with empty state.
+
 **Upload flow**
 
 1. `app.py` receives the file from `st.file_uploader`.
 2. `ingest.py` validates and parses it into a DataFrame, cleans the column names, infers types, and writes table `data` to the session database.
-3. On success, `app.py` creates a new ADK session whose state holds `db_path` and a short `schema_summary`. The UI shows a summary and a preview. On failure, it shows the error and creates nothing.
+3. On success, the uploaded data **replaces** the sample (or previous) data: `app.py` creates a new ADK session whose state holds `db_path` and a short `schema_summary`, and the UI shows a summary and a preview. On failure, the existing database and ADK session are **kept unchanged**, and the UI shows the specific error.
 
 **Question flow**
 
@@ -64,7 +68,7 @@ spreadsheet-qa/
 
 ## 4. Agent and Tools
 
-**Agent:** one `Agent(name="data_analyst", model=AGENT_MODEL, instruction=..., tools=[...])`. It has no sub-agents, output schema, or callbacks.
+**Agent:** one `Agent(name="data_analyst", model=AGENT_MODEL, instruction=..., tools=[...])`. It has no sub-agents or output schema. Its only callback is a `before_agent_callback` that loads the sample data when the session state has no `db_path`, `column_map`, or `schema_summary` (ADK Web). It does nothing in Streamlit, where the state is always set.
 
 **Instruction (main points):**
 
@@ -165,10 +169,13 @@ Every tool returns `{"status": "success", ...}` or `{"status": "error", "error_m
 | Event | Action |
 |---|---|
 | App process starts | `sessions.purge_all()` deletes all of `adk_sheet_qa/`. It runs once per process through `@st.cache_resource`. |
-| First page load | Create `session_id`, the folder, and the runner. Set `last_active = now`. |
-| Valid upload | Delete the old `upload.*` and `data.db`, load the new file, and replace the ADK session (`delete_session` + `create_session` with the new state). Clear the chat history. |
+| First page load | Create `session_id`, the folder, and the runner. Load `sample_data/sales.csv` into `data.db` and create the ADK session with its state. Set `last_active = now`. |
+| Valid upload | Replace `data.db` with the new data, and replace the ADK session (`delete_session` + `create_session` with the new state). Clear the chat history. |
+| Invalid upload | Keep `data.db`, the ADK session, and the chat unchanged. Show the validation error with `st.error`. |
 | Each rerun (any interaction) | If `now - last_active` is more than 30 minutes, run **end session**. Otherwise update `last_active` and touch the folder's modified time. Also delete any *other* session folder whose modified time is older than 30 minutes, which catches tabs that were closed. |
 | **End session** button | Delete the folder, then clear `st.session_state`. The next rerun starts a new session. |
+
+> **Decision — replace the database only after validation, and atomically.** `load_file` validates everything before it writes. It then writes to a temporary file in the session folder and swaps it in with `os.replace`, so a failed write never leaves the session without data.
 
 > **Decision — clean up on reruns, with no background thread.** Streamlit can't tell when a tab closes. Purging when the app starts and sweeping old folders on each rerun covers abandoned sessions without a scheduler, which is enough for a local demo.
 
@@ -186,6 +193,8 @@ Deletion uses `shutil.rmtree(..., ignore_errors=True)`. A failed delete is logge
 
 **End to end** (`streamlit run app.py`, using `sales.csv`):
 
+- [ ] A new session (Streamlit or ADK Web) answers "How many records are there?" with 50 before any upload.
+- [ ] An invalid upload shows its error, and the previous data can still be queried.
 - [ ] "How many records are there?" returns the correct count, citing `get_table_info` or the SQL.
 - [ ] "What is the average sales amount?" matches the value pandas computes.
 - [ ] "Which category has the highest total revenue?" returns the correct category, and the expander shows a `GROUP BY` query.
