@@ -1,0 +1,10 @@
+# Keep secrets and dev-only files out of uploaded sources and images.
+.env
+.venv/
+.git/
+.pytest_cache/
+tests/
+dev_test/
+tmp_session*/
+__pycache__/
+*.pyc

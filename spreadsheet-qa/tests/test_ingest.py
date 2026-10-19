@@ -2,13 +2,17 @@
 
 import pytest
 
-from data_agent.ingest import IngestError, IngestResult, load_file
+from data_agent.ingest import SAMPLE_FILE, IngestError, IngestResult, load_file
 from tests.conftest import SAMPLES
+
+
+def _path(name):
+    return SAMPLE_FILE if name == "sales.csv" else SAMPLES / name
 
 
 @pytest.mark.parametrize("name", ["sales.csv", "sales.xlsx", "multi_sheet.xlsx"])
 def test_valid_files_load(name, tmp_path):
-    r = load_file(name, (SAMPLES / name).read_bytes(), tmp_path / "s")
+    r = load_file(name, _path(name).read_bytes(), tmp_path / "s")
     assert isinstance(r, IngestResult)
     assert (r.row_count, r.column_count) == (50, 5)
     assert "order_date (date) — order date" in r.schema_summary
