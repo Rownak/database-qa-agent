@@ -13,7 +13,7 @@ A demo project for database question answering, built with the **Google Agent De
 ## Workflow
 
 ```
-sample_data/sales.csv ──┐
+data_agent/sample_data/sales.csv ──┐
                         ├─► validate ─► SQLite table "data" (per session) ─► ADK agent ─► tools / read-only SQL ─► answer + Source
 optional CSV/XLSX upload┘
 ```

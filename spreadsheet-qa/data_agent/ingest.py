@@ -25,7 +25,8 @@ TABLE_NAME = "data"
 DB_FILENAME = "data.db"
 MAX_FILE_BYTES = 500 * 1024
 PREVIEW_ROWS = 10
-SAMPLE_FILE = Path(__file__).resolve().parent.parent / "sample_data" / "sales.csv"
+# Inside the package so ``adk deploy`` (which uploads only this folder) ships it.
+SAMPLE_FILE = Path(__file__).resolve().parent / "sample_data" / "sales.csv"
 SUPPORTED_EXTENSIONS = (".csv", ".xlsx")
 
 _UNNAMED_RE = re.compile(r"^Unnamed: \d+")
@@ -137,7 +138,7 @@ def load_file(
 
 
 def load_sample(session_dir: str | Path) -> IngestResult | IngestError:
-    """Loads the bundled ``sample_data/sales.csv`` as a session's starting data.
+    """Loads the bundled ``data_agent/sample_data/sales.csv`` as a session's starting data.
 
     Every new session (Streamlit or ADK Web) starts from this so questions can be
     asked before any upload (design section 1).

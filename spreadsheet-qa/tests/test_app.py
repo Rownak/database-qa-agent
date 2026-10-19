@@ -6,6 +6,7 @@ import pytest
 from streamlit.testing.v1 import AppTest
 
 from data_agent import sessions
+from data_agent.ingest import SAMPLE_FILE
 from tests.conftest import SAMPLES
 
 APP = str(Path(__file__).resolve().parent.parent / "app.py")
@@ -41,7 +42,7 @@ def test_idle_session_expires(at):
 
 
 def test_upload_flow_valid_replaces_invalid_keeps(at):
-    sample = SAMPLES / "sales.csv"
+    sample = SAMPLE_FILE
     at.session_state.messages = [{"role": "user", "content": "hi"}]
     bad = SAMPLES / "duplicate_header.csv"
     at.file_uploader[0].upload(bad.name, bad.read_bytes()).run()

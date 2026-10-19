@@ -19,6 +19,10 @@ from urllib.parse import quote
 
 from google.adk.tools import ToolContext
 
+from data_agent.logs import get_logger
+
+logger = get_logger(__name__)
+
 MAX_ROWS = 100
 MAX_SAMPLE_ROWS = 20
 MAX_CELL_CHARS = 200
@@ -35,7 +39,8 @@ _NUMERIC_TYPES = {"INTEGER", "REAL"}
 
 
 def _error(message: str) -> dict[str, Any]:
-    """Builds the standard error payload returned to the agent."""
+    """Builds the standard error payload returned to the agent and logs the message."""
+    logger.warning("tool error: %s", message)
     return {"status": "error", "error_message": message}
 
 
