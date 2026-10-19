@@ -7,6 +7,42 @@
 - Secret: GOOGLE_API_KEY (Secret Manager, latest version)
 - Budget: $10/month, alerts at 50/90/100%
 
+# Deploy and tear down commands
+Run from `spreadsheet-qa/`. One-time project setup is in [phase_2_1_gcp_setup.md](phase_2_1_gcp_setup.md). Replace `<PROJECT_ID>`, `<API_URL>`.
+
+**1. Backend (`data-qa-api`)**
+```
+uv run adk deploy cloud_run --project=<PROJECT_ID> --region=us-central1   --service_name=data-qa-api --app_name=data_agent --session_service_uri=memory://   data_agent -- --no-allow-unauthenticated   --service-account=data-qa-api-sa@<PROJECT_ID>.iam.gserviceaccount.com   --set-secrets=GOOGLE_API_KEY=GOOGLE_API_KEY:latest   --cpu=1 --memory=512Mi --min-instances=0 --max-instances=1 --concurrency=10 --timeout=120
+
+# Required after every adk deploy (ADK switches google-genai to Vertex AI, so /run returns 500):
+gcloud run services update data-qa-api --region us-central1   --remove-env-vars=GOOGLE_GENAI_USE_ENTERPRISE,GOOGLE_CLOUD_PROJECT,GOOGLE_CLOUD_LOCATION
+
+# Check (expect ["data_agent"]; 403 without the header):
+curl -H "Authorization: Bearer $(gcloud auth print-identity-token)" <API_URL>/list-apps
+```
+`--max-instances=1` matters: sessions live in the instance's memory.
+
+**2. UI (`data-qa-ui`)**
+```
+gcloud run services add-iam-policy-binding data-qa-api --region us-central1   --member=serviceAccount:data-qa-ui-sa@<PROJECT_ID>.iam.gserviceaccount.com --role=roles/run.invoker
+
+uv run python scripts/stage_ui_context.py      # copies Dockerfile.ui and its files into .ui_build/
+gcloud run deploy data-qa-ui --source .ui_build --region=us-central1   --allow-unauthenticated --service-account=data-qa-ui-sa@<PROJECT_ID>.iam.gserviceaccount.com   --set-env-vars=API_URL=<API_URL>   --cpu=1 --memory=512Mi --min-instances=0 --max-instances=1 --session-affinity --timeout=3600
+```
+(`gcloud run deploy --source` only uses a file named `Dockerfile`, so the script stages `Dockerfile.ui` as `Dockerfile`.)
+Old images: add a cleanup policy to the `cloud-run-source-deploy` repository that keeps the 2 newest versions per image (`gcloud artifacts repositories set-cleanup-policies`).
+
+**3. Tear down**
+```
+gcloud run services delete data-qa-ui  --region us-central1
+gcloud run services delete data-qa-api --region us-central1
+gcloud secrets delete GOOGLE_API_KEY
+gcloud artifacts repositories delete cloud-run-source-deploy --location us-central1
+gcloud iam service-accounts delete data-qa-ui-sa@<PROJECT_ID>.iam.gserviceaccount.com
+gcloud iam service-accounts delete data-qa-api-sa@<PROJECT_ID>.iam.gserviceaccount.com
+```
+Or delete everything: `gcloud projects delete <PROJECT_ID>`.
+
 # ADK API server shape (verified locally in Phase 2.2)
 App name is the agent folder: `data_agent`. Interactive docs at `/docs`.
 - Create session: `POST /apps/data_agent/users/{user}/sessions/{session}`. The JSON body **is** the initial state, e.g. `{"upload_name": "x.csv", "upload_b64": "<base64>"}` (do not wrap it in `"state"`). Returns the session; 200.
@@ -22,9 +58,7 @@ App name is the agent folder: `data_agent`. Interactive docs at `/docs`.
   (the console also shows https://data-qa-api-6b3r2whd2q-uc.a.run.app; both work)
 - Settings: 1 CPU, 512Mi, min 0, max 1, concurrency 10, timeout 120s, runs as `data-qa-api-sa`, `GOOGLE_API_KEY` mounted from Secret Manager (`latest`).
 - Artifact Registry repo `cloud-run-source-deploy` (us-central1) was created by the first deploy.
-- **After every `adk deploy cloud_run`, run:**
-  `gcloud run services update data-qa-api --region us-central1 --remove-env-vars=GOOGLE_GENAI_USE_ENTERPRISE,GOOGLE_CLOUD_PROJECT,GOOGLE_CLOUD_LOCATION`
-  ADK sets these, which switches google-genai to Vertex AI (not enabled here) and `/run` returns 500 (`Agent Platform API has not been used`).
+- After every `adk deploy cloud_run`, remove the Vertex AI env vars (command above); otherwise `/run` returns 500 (`Agent Platform API has not been used`).
 - gcloud on this machine is not on the Git Bash PATH: `export PATH="$PATH:/c/Users/rowna/AppData/Local/Google/Cloud SDK/google-cloud-sdk/bin"`.
 
 # UI deployed (Phase 2.5, 2026-10-19)
@@ -32,9 +66,7 @@ App name is the agent folder: `data_agent`. Interactive docs at `/docs`.
 - URL: https://data-qa-ui-701944778941.us-central1.run.app
 - Settings: 1 CPU, 512Mi, min 0, max 1, session affinity, timeout 3600s, concurrency 80 (default), env `API_URL=https://data-qa-api-701944778941.us-central1.run.app`.
 - `data-qa-ui-sa` has `roles/run.invoker` on `data-qa-api` only. The backend stays private.
-- Deploy (from `spreadsheet-qa/`): `uv run python scripts/stage_ui_context.py`, then
-  `gcloud run deploy data-qa-ui --source .ui_build --region=us-central1 --allow-unauthenticated --service-account=data-qa-ui-sa@<PROJECT_ID>.iam.gserviceaccount.com --set-env-vars=API_URL=<data-qa-api URL> --cpu=1 --memory=512Mi --min-instances=0 --max-instances=1 --session-affinity --timeout=3600`
-  (`gcloud run deploy --source` only uses a file named `Dockerfile`, so the script stages `Dockerfile.ui` as `Dockerfile` in `.ui_build/`.)
+- Deploy command: see "Deploy and tear down commands" above.
 - Artifact Registry `cloud-run-source-deploy` has a cleanup policy: delete all versions except the 2 most recent per image.
 - **Known behaviour:** a browser tab left open while the UI instance is replaced (a deploy, a crash, the 3600 s websocket limit) keeps a stale Streamlit session. Uploads from that tab fail with `Request failed with status code 400` (server log: `PUT /_stcore/upload_file/... 400`, "Invalid session_id"). Reload the page to fix it; it is not related to file size.
 

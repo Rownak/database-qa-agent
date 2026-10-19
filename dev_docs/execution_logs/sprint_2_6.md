@@ -54,7 +54,7 @@ One query over both services for `data_agent.*`, `ui_client` and warnings shows:
 
 ## Other changes
 - **UI error logging** (`ui_client`): warnings for backend errors, 404s, unreachable backend and token failures, with only method, path and status (a test checks that no question or upload text is logged). Needed so UI errors appear in Cloud Logging at all.
-- **README:** new **Deploy to Cloud Run** section (prerequisites, one-time setup commands, both deploy commands, the required env-var removal after `adk deploy`, how to open the UI, behaviours to know such as cold starts, backend restarts and the stale-tab 400, running the UI against a local API server, cost notes, teardown), plus a note in Limitations.
+- **README:** new short **Deploy to Cloud Run** section: what runs where, links to the commands (setup in `phase_2_1_gcp_setup.md`; deploy, checks and tear down in `deploy.md`), how to open the UI, behaviours to know (cold starts, backend restarts, stale-tab 400, local API server) and cost notes. The commands themselves live in those two docs, not the README.
 - `dev_docs/deploy/deploy.md`: current revisions and the measurements above.
 - UI redeployed twice (revisions 00005, 00006). The backend got two temporary env-var revisions for the lifecycle test; its config is back to the Phase 2.4 state (current revision `data-qa-api-00008-6dc`).
 
