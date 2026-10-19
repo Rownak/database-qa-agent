@@ -11,6 +11,7 @@ and the returned :class:`IngestResult` carries everything the UI and the agent n
 from __future__ import annotations
 
 import io
+import os
 import re
 import sqlite3
 import warnings
@@ -24,6 +25,7 @@ TABLE_NAME = "data"
 DB_FILENAME = "data.db"
 MAX_FILE_BYTES = 10 * 1024 * 1024
 PREVIEW_ROWS = 10
+SAMPLE_FILE = Path(__file__).resolve().parent.parent / "sample_data" / "sales.csv"
 SUPPORTED_EXTENSIONS = (".csv", ".xlsx")
 
 _UNNAMED_RE = re.compile(r"^Unnamed: \d+")
@@ -87,8 +89,9 @@ def load_file(
         An :class:`IngestResult` on success, otherwise an :class:`IngestError`.
 
     Side Effects:
-        On success, creates ``session_dir`` if needed and (re)writes ``data.db``
-        in it. On failure, the filesystem is untouched.
+        On success, creates ``session_dir`` if needed and replaces ``data.db``
+        in it atomically. On failure, the filesystem (including any existing
+        ``data.db``) is untouched.
     """
     ext = Path(uploaded_name).suffix.lower()
     if ext not in SUPPORTED_EXTENSIONS:
@@ -131,6 +134,24 @@ def load_file(
         preview=df.head(PREVIEW_ROWS),
         sheet_name=sheet_name,
     )
+
+
+def load_sample(session_dir: str | Path) -> IngestResult | IngestError:
+    """Loads the bundled ``sample_data/sales.csv`` as a session's starting data.
+
+    Every new session (Streamlit or ADK Web) starts from this so questions can be
+    asked before any upload (design section 1).
+
+    Args:
+        session_dir: Per-session directory that will hold ``data.db``.
+
+    Returns:
+        The :func:`load_file` result for the sample file.
+
+    Side Effects:
+        Same as :func:`load_file`.
+    """
+    return load_file(SAMPLE_FILE.name, SAMPLE_FILE.read_bytes(), session_dir)
 
 
 def _read_csv(file_bytes: bytes) -> tuple[pd.DataFrame, None, list[str]] | IngestError:
@@ -334,7 +355,7 @@ def _to_iso(s: pd.Series) -> pd.Series:
 
 
 def _write_sqlite(df: pd.DataFrame, sql_types: dict[str, str], session_dir: Path) -> Path:
-    """Writes the dataframe to table ``data`` in a fresh ``data.db``.
+    """Writes the dataframe to table ``data``, replacing ``data.db`` atomically.
 
     Args:
         df: Cleaned and type-converted data.
@@ -345,17 +366,20 @@ def _write_sqlite(df: pd.DataFrame, sql_types: dict[str, str], session_dir: Path
         Path of the created database file.
 
     Side Effects:
-        Creates ``session_dir``, replaces any existing ``data.db``, and deletes the
-        partial file if the write fails (the exception is re-raised).
+        Creates ``session_dir``. The data goes to a temp file that is moved over
+        ``data.db`` only after a successful write, so a failure (exception
+        re-raised) leaves any existing ``data.db`` untouched.
     """
     session_dir.mkdir(parents=True, exist_ok=True)
     db_path = session_dir / DB_FILENAME
-    db_path.unlink(missing_ok=True)
+    tmp_path = session_dir / (DB_FILENAME + ".tmp")
     try:
-        with closing(sqlite3.connect(db_path)) as conn:
+        tmp_path.unlink(missing_ok=True)
+        with closing(sqlite3.connect(tmp_path)) as conn:
             df.to_sql(TABLE_NAME, conn, index=False, dtype=sql_types)
             conn.commit()
+        os.replace(tmp_path, db_path)  # atomic; the connection above is already closed
     except Exception:
-        db_path.unlink(missing_ok=True)
+        tmp_path.unlink(missing_ok=True)
         raise
     return db_path

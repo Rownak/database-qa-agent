@@ -54,3 +54,57 @@ def test_duplicate_headers_rejected(data, tmp_path):
 def test_column_cleaning(tmp_path):
     r = load_file("t.csv", b"1a,b c\n1,x\n", tmp_path / "s")
     assert r.column_map == {"c_1a": "1a", "b_c": "b c"}
+
+
+def _rows(db_path):
+    import sqlite3
+
+    with sqlite3.connect(db_path) as conn:
+        return conn.execute("SELECT COUNT(*) FROM data").fetchone()[0]
+
+
+def test_load_sample(tmp_path):
+    from data_agent.ingest import load_sample
+
+    r = load_sample(tmp_path / "s")
+    assert isinstance(r, IngestResult) and r.row_count == 50 and _rows(r.db_path) == 50
+
+
+def test_invalid_upload_keeps_existing_db(tmp_path):
+    from data_agent.ingest import load_sample
+
+    session = tmp_path / "s"
+    db = load_sample(session).db_path
+    before = db.read_bytes()
+    for name in ("notes.txt", "empty.csv", "duplicate_header.csv", "corrupt.xlsx"):
+        assert isinstance(load_file(name, (SAMPLES / name).read_bytes(), session), IngestError)
+    assert db.read_bytes() == before
+    assert [f.name for f in session.iterdir()] == ["data.db"]
+
+
+def test_valid_upload_replaces_db(tmp_path):
+    from data_agent.ingest import load_sample
+
+    session = tmp_path / "s"
+    load_sample(session)
+    r = load_file("small.csv", b"a,b\n1,x\n2,y\n", session)
+    assert _rows(r.db_path) == 2 and [f.name for f in session.iterdir()] == ["data.db"]
+
+
+def test_failed_write_keeps_existing_db(tmp_path, monkeypatch):
+    import pandas as pd
+
+    from data_agent.ingest import load_sample
+
+    session = tmp_path / "s"
+    db = load_sample(session).db_path
+    before = db.read_bytes()
+
+    def boom(*a, **k):
+        raise RuntimeError("disk full")
+
+    monkeypatch.setattr(pd.DataFrame, "to_sql", boom)
+    with pytest.raises(RuntimeError):
+        load_file("small.csv", b"a,b\n1,x\n", session)
+    assert db.read_bytes() == before
+    assert [f.name for f in session.iterdir()] == ["data.db"]

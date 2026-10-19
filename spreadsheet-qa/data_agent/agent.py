@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 from google.adk.agents import Agent
 from google.adk.agents.callback_context import CallbackContext
 
-from data_agent.ingest import IngestResult, load_file
+from data_agent.ingest import IngestResult, load_sample
 from data_agent.tools import (
     get_column_stats,
     get_sample_rows,
@@ -45,7 +45,6 @@ Rules:
 9. End every answer with a final line starting with "Source:" that names the tool used, or shows the SQL query that produced the answer.
 """
 
-_SEED_FILE = Path(__file__).resolve().parent.parent / "sample_data" / "sales.csv"
 _STATE_KEYS = ("db_path", "column_map", "schema_summary")
 
 
@@ -70,7 +69,7 @@ def seed_state_if_missing(callback_context: CallbackContext) -> None:
     state = callback_context.state
     if all(state.get(k) is not None for k in _STATE_KEYS):
         return None
-    result = load_file(_SEED_FILE.name, _SEED_FILE.read_bytes(), Path(tempfile.mkdtemp()) / "session")
+    result = load_sample(Path(tempfile.mkdtemp()) / "session")
     if isinstance(result, IngestResult):
         state["db_path"] = str(result.db_path)
         state["column_map"] = result.column_map

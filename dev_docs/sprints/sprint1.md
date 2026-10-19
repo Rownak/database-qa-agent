@@ -4,12 +4,13 @@
 
 | Phase | Focus | Time |
 |---|---|---|
-| 1 | uv project and dependency setup | 15 min |
-| 2 | File ingestion | 25 min |
-| 3 | Agent tools and SQL safety | 25 min |
-| 4 | ADK agent | 15 min |
-| 5 | Streamlit UI and session lifecycle | 25 min |
-| 6 | End-to-end verification | 15 min |
+| 1.1 | uv project and dependency setup | 15 min |
+| 1.2 | File ingestion | 25 min |
+| 1.3 | Agent tools and SQL safety | 25 min |
+| 1.4 | ADK agent | 15 min |
+| 1.5 | Default sample database | 15 min |
+| 1.6 | Streamlit UI and session lifecycle | 25 min |
+| 1.7 | End-to-end verification | 15 min |
 
 ---
 
@@ -70,7 +71,18 @@
 - [x] Add a dev-only `before_agent_callback` on `root_agent` so `adk web` works: if `db_path`, `column_map` or `schema_summary` is missing from `callback_context.state`, load `sample_data/sales.csv` with `load_file` into a temp session folder and set the three keys. It does nothing when the state is already set, so Streamlit (Phase 1.5) is unaffected. Confirm `uv run adk web` answers a question without the `schema_summary` KeyError (see `dev_docs/errors/adk_web_schema_summary_keyerror.md`).
 - [x] Run `uv run pytest` from `spreadsheet-qa/` and confirm all tests pass.
 
-## Phase 1.5 — Streamlit UI and Session Lifecycle (`app.py`, `sessions.py`, 25 min)
+## Phase 1.5 — Default Sample Database (`ingest.py`, `agent.py`, 15 min)
+
+**Goal:** every new session (Streamlit or ADK Web) starts with `sample_data/sales.csv` loaded. A valid upload replaces it; an invalid upload keeps it and shows a clear error (design §1 and §7).
+
+- [x] In `ingest.py`, add `load_sample(session_dir)`, which calls `load_file` on `sample_data/sales.csv` and returns its result.
+- [x] Make `load_file` replace `data.db` atomically: write to a temp file in `session_dir`, then `os.replace` it over `data.db` only after the write succeeds.
+- [x] Confirm validation still runs before any write, so an invalid file leaves the existing `data.db` unchanged.
+- [x] Update the `before_agent_callback` in `agent.py` to use `load_sample`.
+- [x] Add `dev_test/phase_1_5.py`: load the sample, upload `notes.txt` (error, sample still has 50 rows), then upload `multi_sheet.xlsx` (replaces the sample).
+- [x] Run `uv run pytest` from `spreadsheet-qa/` and confirm all tests pass.
+
+## Phase 1.6 — Streamlit UI and Session Lifecycle (`app.py`, `sessions.py`, 25 min)
 
 **Goal:** the upload-and-chat flow works, each session is isolated, and cleanup happens automatically (design §1 and §7).
 
@@ -80,14 +92,14 @@
   - `touch(dir)`
   - `sweep_stale(max_age=30 min)`
   - `end_session(dir)`, which runs `rmtree` with `ignore_errors=True`
-- [ ] On the first run, create `session_id`, the session folder, an `InMemorySessionService`, a `Runner`, and `last_active`, all stored in `st.session_state`.
+- [ ] On the first run, create `session_id`, the session folder, an `InMemorySessionService`, a `Runner`, and `last_active`, all stored in `st.session_state`. Load the sample with `load_sample` and create the ADK session with its state.
 - [ ] On every rerun: if the session has been inactive for more than 30 minutes, end it. Otherwise update `last_active`, touch the folder, and sweep stale folders.
-- [ ] Upload flow: on a new file, call `load_file`. On success, replace the ADK session with one holding the new state, clear the chat, and show the row and column counts, the preview, and the ignored-sheets notice. On error, show `st.error`.
-- [ ] Chat flow: use `st.chat_input` and run `asyncio.run(...)` over `runner.run_async`. Show the final response, plus an expander labeled "How this was answered" that lists the tool calls and their arguments (the SQL). Disable chat until a file has been loaded.
+- [ ] Upload flow: on a new file, call `load_file`. On success, replace the ADK session with one holding the new state, clear the chat, and show the row and column counts, the preview, and the ignored-sheets notice. On error, show `st.error` and keep the current data, ADK session, and chat.
+- [ ] Chat flow: use `st.chat_input` and run `asyncio.run(...)` over `runner.run_async`. Show the final response, plus an expander labeled "How this was answered" that lists the tool calls and their arguments (the SQL). Chat is available from the start, using the sample data; show which file is currently loaded.
 - [ ] Add an **End session** button that deletes the folder, clears `st.session_state`, and calls `st.rerun()`.
 - [ ] Run `uv run pytest` from `spreadsheet-qa/` and confirm all tests pass.
 
-## Phase 1.6 — End-to-End Verification (15 min)
+## Phase 1.7 — End-to-End Verification (15 min)
 
 **Goal:** every acceptance criterion in project_description.md §6 passes when you run `uv run streamlit run app.py`.
 
