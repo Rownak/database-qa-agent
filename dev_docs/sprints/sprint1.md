@@ -58,15 +58,17 @@
 
 **Goal:** a single `root_agent` that picks the right tool, writes SQLite queries, and names its source.
 
-- [ ] Define `AGENT_MODEL = "gemini-3.5-flash-lite"` and `root_agent = Agent(name="data_analyst", ..., tools=[the four tools])`.
-- [ ] Write the instruction from design §4. It should:
+- [x] Define `AGENT_MODEL = "gemini-3.5-flash-lite"` and `root_agent = Agent(name="data_analyst", ..., tools=[the four tools])`.
+- [x] Write the instruction from design §4. It should:
   - include `{schema_summary}` so the agent knows the table's columns
   - tell the agent to prefer a dedicated tool and use one `SELECT` for anything else
   - require double-quoted, cleaned column names
   - forbid made-up numbers and tell the agent to explain any missing data
   - allow one retry when a query fails
   - end every answer with a `Source:` line
-- [ ] Quick check: write a small script that loads `sales.csv` through `load_file`, creates an ADK session with the result as its state, and asks "How many records are there?" through `Runner.run_async`. Confirm the answer is correct and a tool call appears in the events.
+- [x] Quick check: write a small script that loads `sales.csv` through `load_file`, creates an ADK session with the result as its state, and asks "How many records are there?" through `Runner.run_async`. Confirm the answer is correct and a tool call appears in the events.
+- [x] Add a dev-only `before_agent_callback` on `root_agent` so `adk web` works: if `db_path`, `column_map` or `schema_summary` is missing from `callback_context.state`, load `sample_data/sales.csv` with `load_file` into a temp session folder and set the three keys. It does nothing when the state is already set, so Streamlit (Phase 1.5) is unaffected. Confirm `uv run adk web` answers a question without the `schema_summary` KeyError (see `dev_docs/errors/adk_web_schema_summary_keyerror.md`).
+- [x] Run `uv run pytest` from `spreadsheet-qa/` and confirm all tests pass.
 
 ## Phase 1.5 — Streamlit UI and Session Lifecycle (`app.py`, `sessions.py`, 25 min)
 
@@ -83,6 +85,7 @@
 - [ ] Upload flow: on a new file, call `load_file`. On success, replace the ADK session with one holding the new state, clear the chat, and show the row and column counts, the preview, and the ignored-sheets notice. On error, show `st.error`.
 - [ ] Chat flow: use `st.chat_input` and run `asyncio.run(...)` over `runner.run_async`. Show the final response, plus an expander labeled "How this was answered" that lists the tool calls and their arguments (the SQL). Disable chat until a file has been loaded.
 - [ ] Add an **End session** button that deletes the folder, clears `st.session_state`, and calls `st.rerun()`.
+- [ ] Run `uv run pytest` from `spreadsheet-qa/` and confirm all tests pass.
 
 ## Phase 1.6 — End-to-End Verification (15 min)
 
@@ -98,3 +101,5 @@
 - [ ] Every answer ends with a `Source:` line.
 - [ ] After **End session** the folder is gone. Uploading a new file resets the chat. Restarting the app empties `adk_sheet_qa/`.
 - [ ] Note any failures, fix them or record them, then commit the working demo.
+- [ ] Run `uv run pytest` from `spreadsheet-qa/` and confirm all tests pass.
+
