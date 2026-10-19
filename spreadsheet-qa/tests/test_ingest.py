@@ -42,8 +42,8 @@ def test_corrupt_xlsx(tmp_path):
 
 
 def test_size_limit(tmp_path):
-    r = load_file("big.csv", b"x" * (10 * 1024 * 1024 + 1), tmp_path / "s")
-    assert isinstance(r, IngestError) and "10 MB" in r.message
+    r = load_file("big.csv", b"x" * (500 * 1024 + 1), tmp_path / "s")
+    assert isinstance(r, IngestError) and "500 KB" in r.message
 
 
 @pytest.mark.parametrize("data", [b"a,b,a\n1,2,3\n", b"Order ID,order_id\n1,2\n"])

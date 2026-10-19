@@ -64,7 +64,7 @@ Tools find the current session's database path from the session state, so the ag
 **Validation before loading**
 
 - The file extension must be `.csv` or `.xlsx`. Anything else is rejected with an "unsupported file type" message.
-- The file size must be under a set limit (for example 10 MB).
+- The file size must be under a set limit (500 KB).
 - The file must open without errors (bad encoding or a corrupt workbook gives a "could not read file" message).
 - After parsing, the table must have at least one data row and at least one column.
 - The file must have a header row. Headers must be non-blank, text (not plain numbers), and unique (no duplicate column names). If all headers look auto-generated (`Unnamed: 0`, …), the file is rejected with "no header row detected"; any other violation gets its own specific error.

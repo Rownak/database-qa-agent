@@ -20,7 +20,7 @@
 
 - [x] Run `uv init --app --no-workspace --python 3.12 spreadsheet-qa` and delete the generated `main.py`. The `--no-workspace` flag keeps the project separate from the course's root `pyproject.toml`.
 - [x] Run `uv add google-adk streamlit pandas openpyxl python-dotenv`. The resulting `pyproject.toml` and `uv.lock` replace the `requirements.txt` mentioned in the design.
-- [x] Create the folders and empty files from design §3: `app.py`, `data_agent/{__init__,agent,tools,ingest,sessions}.py`, `sample_data/`, and `.streamlit/config.toml` containing `[server] maxUploadSize = 10`.
+- [x] Create the folders and empty files from design §3: `app.py`, `data_agent/{__init__,agent,tools,ingest,sessions}.py`, `sample_data/`, and `.streamlit/config.toml` containing `[server] maxUploadSize = 1` (Streamlit only takes whole MB; the 500 KB limit is enforced in `load_file`).
 - [x] Add a `.env` file with `GOOGLE_API_KEY`, and add `.env` to `.gitignore`.
 - [x] Add sample files to `sample_data/`:
   - [x] `sales.csv`, about 50 rows with columns `order_id`, `order date`, `category`, `sales_amount`, `revenue`
@@ -34,7 +34,7 @@
 **Goal:** a valid file becomes table `data` in a SQLite database for the session. An invalid file gives a clear error and creates no database (design §5).
 
 - [x] Add a `load_file(uploaded_name, file_bytes, session_dir)` function that returns either a result (`db_path`, `row_count`, `column_count`, `column_map`, `schema_summary`, `ignored_sheets`, preview DataFrame) or an error message.
-- [x] Add the validation steps in order: extension, 10 MB size limit, readable (CSV with `utf-8-sig`, XLSX with `openpyxl`), not empty after dropping fully empty rows and columns, header row valid (not blank, every header text rather than a number, no duplicate column names; design §5 step 5).
+- [x] Add the validation steps in order: extension, 500 KB size limit, readable (CSV with `utf-8-sig`, XLSX with `openpyxl`), not empty after dropping fully empty rows and columns, header row valid (not blank, every header text rather than a number, no duplicate column names; design §5 step 5).
 - [x] For XLSX files, load only `sheet_names[0]` and record the other sheet names in `ignored_sheets`.
 - [x] Clean the column names: lowercase, non-alphanumeric runs become `_`, `c_` prefix if a name starts with a digit. Keep a map from cleaned to original names.
 - [x] Infer types: numeric dtypes stay as they are. For `object` columns, try `to_numeric` first, then `to_datetime` (stored as ISO text and labeled `date`), and otherwise keep `TEXT`.

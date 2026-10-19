@@ -59,7 +59,7 @@ spreadsheet-qa/
 │   ├── ingest.py          # validation, column cleaning, type inference, SQLite load
 │   └── sessions.py        # temp-dir creation, activity tracking, cleanup
 ├── sample_data/           # sales.csv, sales.xlsx, multi_sheet.xlsx, and invalid files
-├── .streamlit/config.toml # server.maxUploadSize = 10
+├── .streamlit/config.toml # server.maxUploadSize = 1 (whole MB; the 500 KB limit is enforced in ingest)
 ├── .env
 └── requirements.txt
 ```
@@ -100,7 +100,7 @@ Every tool returns `{"status": "success", ...}` or `{"status": "error", "error_m
 **Validation (in this order; the first failure stops ingestion):**
 
 1. **Extension** is `.csv` or `.xlsx`. Otherwise: "Unsupported file type. Upload a .csv or .xlsx file."
-2. **Size** is at most 10 MB. This is checked on `uploaded_file.size` and also enforced by Streamlit's config.
+2. **Size** is at most 500 KB. This is checked in `load_file` on the file bytes. Streamlit's `maxUploadSize` only takes whole MB, so it is set to 1 as a coarse backstop.
 3. **Readable:**
    - CSV is read with `pd.read_csv(encoding="utf-8-sig")`, which also accepts files with a BOM.
    - XLSX is opened with `pd.ExcelFile(engine="openpyxl")`.
@@ -206,7 +206,7 @@ Deletion uses `shutil.rmtree(..., ignore_errors=True)`. A failed delete is logge
 
 - A single user runs the demo locally. In-memory ADK sessions are fine, and history is lost when the app restarts.
 - CSV files are UTF-8 and comma-delimited. Delimiter detection is not needed for v1.
-- Files of 10 MB or less fit comfortably in memory with pandas.
+- Files of 500 KB or less fit comfortably in memory with pandas.
 - Gemini access is configured through `.env`, the same way as in the other course folders.
 
 ## 10. Future Backlog

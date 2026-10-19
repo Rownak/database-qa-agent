@@ -23,7 +23,7 @@ import pandas as pd
 
 TABLE_NAME = "data"
 DB_FILENAME = "data.db"
-MAX_FILE_BYTES = 10 * 1024 * 1024
+MAX_FILE_BYTES = 500 * 1024
 PREVIEW_ROWS = 10
 SAMPLE_FILE = Path(__file__).resolve().parent.parent / "sample_data" / "sales.csv"
 SUPPORTED_EXTENSIONS = (".csv", ".xlsx")
@@ -98,7 +98,7 @@ def load_file(
         return IngestError("Unsupported file type. Upload a .csv or .xlsx file.")
 
     if len(file_bytes) > MAX_FILE_BYTES:
-        return IngestError("File is too large. The limit is 10 MB.")
+        return IngestError("File is too large. The limit is 500 KB.")
 
     read = _read_csv(file_bytes) if ext == ".csv" else _read_xlsx(file_bytes)
     if isinstance(read, IngestError):
