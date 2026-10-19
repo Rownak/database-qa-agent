@@ -86,18 +86,22 @@
 
 **Goal:** the upload-and-chat flow works, each session is isolated, and cleanup happens automatically (design §1 and §7).
 
-- [ ] In `sessions.py`, add:
+- [x] In `sessions.py`, add:
   - `purge_all()`, run once per server process through `@st.cache_resource`
   - `new_session_dir(session_id)`
   - `touch(dir)`
   - `sweep_stale(max_age=30 min)`
   - `end_session(dir)`, which runs `rmtree` with `ignore_errors=True`
-- [ ] On the first run, create `session_id`, the session folder, an `InMemorySessionService`, a `Runner`, and `last_active`, all stored in `st.session_state`. Load the sample with `load_sample` and create the ADK session with its state.
-- [ ] On every rerun: if the session has been inactive for more than 30 minutes, end it. Otherwise update `last_active`, touch the folder, and sweep stale folders.
-- [ ] Upload flow: on a new file, call `load_file`. On success, replace the ADK session with one holding the new state, clear the chat, and show the row and column counts, the preview, and the ignored-sheets notice. On error, show `st.error` and keep the current data, ADK session, and chat.
-- [ ] Chat flow: use `st.chat_input` and run `asyncio.run(...)` over `runner.run_async`. Show the final response, plus an expander labeled "How this was answered" that lists the tool calls and their arguments (the SQL). Chat is available from the start, using the sample data; show which file is currently loaded.
-- [ ] Add an **End session** button that deletes the folder, clears `st.session_state`, and calls `st.rerun()`.
-- [ ] Run `uv run pytest` from `spreadsheet-qa/` and confirm all tests pass.
+- [x] On the first run, create `session_id`, the session folder, an `InMemorySessionService`, a `Runner`, and `last_active`, all stored in `st.session_state`. Load the sample with `load_sample` and create the ADK session with its state.
+- [x] On every rerun: if the session has been inactive for more than 30 minutes, end it. Otherwise update `last_active`, touch the folder, and sweep stale folders.
+- [x] Upload flow: on a new file, call `load_file`. On success, replace the ADK session with one holding the new state, clear the chat, and show the row and column counts, the preview, and the ignored-sheets notice. On error, show `st.error` and keep the current data, ADK session, and chat.
+- [x] Chat flow: use `st.chat_input` and run `asyncio.run(...)` over `runner.run_async`. Show the final response, plus an expander labeled "How this was answered" that lists the tool calls and their arguments (the SQL). Chat is available from the start, using the sample data; show which file is currently loaded.
+- [x] Add an **End session** button that deletes the folder, clears `st.session_state`, and calls `st.rerun()`.
+- [x] Split the page with `st.columns([1, 2])`:
+  - left: uploader, upload error, current data (name, counts, ignored-sheets notice, preview) and **End session**
+  - right: chat history in a scrollable `st.container(height=...)`, with `st.chat_input` below it
+- [x] Run `uv run pytest` and `uv run streamlit run app.py` and confirm upload, chat and **End session** still work in the new layout.
+- [x] Run `uv run pytest` from `spreadsheet-qa/` and confirm all tests pass.
 
 ## Phase 1.7 — End-to-End Verification (15 min)
 
