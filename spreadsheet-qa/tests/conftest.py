@@ -27,3 +27,9 @@ def ctx(loaded):
             "schema_summary": loaded.schema_summary,
         }
     )
+
+
+@pytest.fixture(autouse=True)
+def _local_mode(monkeypatch):
+    """Tests run in local (in-process) mode unless they set API_URL themselves."""
+    monkeypatch.delenv("API_URL", raising=False)

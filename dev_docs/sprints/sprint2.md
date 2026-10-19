@@ -69,24 +69,24 @@
 
 **Goal:** Streamlit talks only to the backend API, with an ID token, and keeps all Sprint 1 UI behaviour.
 
-- [ ] Add `ui_client.py` with `create_session(sid, state)`, `ask(sid, question)` (returns the answer and tool calls from the `/run` events), and `delete_session(sid)`.
+- [x] Add `ui_client.py` with `create_session(sid, state)`, `ask(sid, question)` (returns the answer and tool calls from the `/run` events), and `delete_session(sid)`.
   - Use `requests` with a timeout.
   - When `API_URL` is not localhost, send `Authorization: Bearer <token>` from `google.oauth2.id_token.fetch_id_token(Request(), API_URL)`.
   - Cache the token and refresh it before it expires (about 1 hour).
-- [ ] Update `app.py`:
+- [x] Update `app.py`:
   - Upload: validate and preview with `load_file` into the UI's `/tmp` folder, then send `upload_name` and `upload_b64` in a new session's state and delete the old session.
   - End session: delete the session through the API, then delete the local folder.
   - On a 404 from `ask`, recreate the session from the held upload, clear the chat, and show `st.info`.
   - Keep the split layout, the expander and the error messages.
-- [ ] Keep a local mode: if `API_URL` is unset, use the in-process `Runner` as today, so `uv run streamlit run app.py` still works without GCP.
-- [ ] Add `google-auth` and `requests` to the project. Add `Dockerfile.ui`:
+- [x] Keep a local mode: if `API_URL` is unset, use the in-process `Runner` as today, so `uv run streamlit run app.py` still works without GCP.
+- [x] Add `google-auth` and `requests` to the project. Add `Dockerfile.ui`:
   - base image `python:3.12-slim`
   - install the UI dependencies only (`streamlit`, `pandas`, `openpyxl`, `requests`, `google-auth`)
   - copy `app.py`, `ui_client.py`, `data_agent/ingest.py`, `data_agent/sessions.py` and `data_agent/sample_data/`
   - start with `CMD streamlit run app.py --server.port=$PORT --server.address=0.0.0.0 --server.headless=true`
-- [ ] Add `.gcloudignore` (and `.dockerignore`) excluding `.env`, `.venv/`, `tests/`, `dev_test/`, `tmp_session*/` and `__pycache__/`.
-- [ ] Tests: mock `requests` for `ui_client` (headers, 404 handling, parsing `/run` events). The `AppTest` tests run in local mode. Run `uv run pytest`.
-- [ ] Local check: run `adk api_server` and `API_URL=http://localhost:8000 uv run streamlit run app.py` together. Upload, ask and end the session.
+- [x] Add `.gcloudignore` (and `.dockerignore`) excluding `.env`, `.venv/`, `tests/`, `dev_test/`, `tmp_session*/` and `__pycache__/`.
+- [x] Tests: mock `requests` for `ui_client` (headers, 404 handling, parsing `/run` events). The `AppTest` tests run in local mode. Run `uv run pytest`.
+- [x] Local check: run `adk api_server` and `API_URL=http://localhost:8000 uv run streamlit run app.py` together. Upload, ask and end the session.
 
 ## Phase 2.4 — Deploy the Backend (`data-qa-api`)
 
