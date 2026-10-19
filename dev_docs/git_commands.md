@@ -104,3 +104,44 @@ git switch dev                # keep developing on dev
 - **Keep `main` stable:** don't commit to it directly. Fixes go through `dev`; for a fix on `dev`, use a `fix/<topic>` branch.
 - **If a merge conflict happens:** fix the files, then run `git add <file>` and `git commit` to finish the merge.
 - **Check where you are** with `git status` and `git log --oneline --graph --all`.
+
+
+## Revert push
+
+Run these from the repo root. Check first, because the right undo depends on whether you pushed.
+
+```bash
+git switch main
+git log --oneline --graph -5     # the top commit should be "release: Database Q&A Agent MVP v0.1.0"
+git tag                          # v0.1.0 should be listed
+```
+
+**1. Undo locally**
+```bash
+git tag -d v0.1.0
+git reset --hard HEAD^           # moves main back to the commit before the merge
+```
+`HEAD^` is main's previous tip (the merge's first parent). If the log in step 0 shows anything else on top, stop and use that commit's hash instead.
+
+**2. Undo on the remote, only if you ran the push**
+```bash
+git push origin :refs/tags/v0.1.0          # delete the remote tag
+git push --force-with-lease origin main    # rewind remote main
+```
+This rewrites the remote `main`. It's fine for a solo demo. If anyone else has pulled it, use `git revert -m 1 <merge-hash>` instead of the reset and force-push. Be aware that re-merging `dev` later then needs you to revert that revert first.
+
+**3. Update the README, then redo the release**
+```bash
+git switch dev
+# edit README.md
+git add README.md
+git commit -m "docs: update README"
+
+git switch main
+git merge --no-ff dev -m "release: Database Q&A Agent MVP v0.1.0"
+git tag -a v0.1.0 -m "First working demo"
+git push origin main --tags
+```
+
+**Shortcut:** you can skip the undo. Commit the README on `dev`, merge it into `main`, then move the tag with `git tag -f -a v0.1.0 -m "First working demo"`. If the tag was pushed, follow with `git push -f origin v0.1.0`. This leaves the earlier merge in history, which is harmless.
+

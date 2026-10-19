@@ -18,10 +18,10 @@ Objectives:
 
 ## 2. Core User Workflow
 
-1. The user opens the Streamlit app, which starts a new session.
-2. The user uploads one `.csv` or `.xlsx` file.
-3. The app validates the file. If it fails, the app shows a clear error and the user can try another file.
-4. If the file is valid, the app loads it into one table in a SQLite database for that session and shows a short summary: table name, row and column counts, and a preview.
+1. The user opens the Streamlit app, which starts a new session. Every session starts with a SQLite database loaded from the sample file `sample_data/sales.csv`, so questions can be asked right away.
+2. Optionally, the user uploads one `.csv` or `.xlsx` file to replace the sample data.
+3. The app validates the file. If it fails, the app shows a clear error, keeps the current data, and the user can try another file.
+4. If the file is valid, the app replaces the current data with it (one table in the session's SQLite database) and shows a short summary: table name, row and column counts, and a preview.
 5. The user asks questions in the chat. For each one, the agent:
    - uses an inspection tool, or writes and runs a read-only SQL query, and
    - answers based on the result. If the data can't answer the question, the agent says what is missing.
@@ -31,10 +31,10 @@ Objectives:
 
 **In scope**
 
-- One file per session, loaded as one table (for example `data`). Uploading a new file replaces the current one: the old file and database are deleted first.
+- One file per session, loaded as one table (for example `data`). Every session starts with the sample `sales.csv` loaded. Uploading a valid file replaces the current data (sample or earlier upload).
 - Supported formats: `.csv` (UTF-8, comma-delimited) and `.xlsx`.
 - **Excel worksheets:** only the **first worksheet** is loaded. If the workbook has more sheets, the app tells the user which sheets were ignored. Choosing a sheet, or loading several, is left for later.
-- Column names are cleaned into safe SQL identifiers (trimmed, spaces become `_`, duplicates get a suffix). The agent sees both the original and the cleaned names.
+- Column names are cleaned into safe SQL identifiers (trimmed, spaces become `_`). The agent sees both the original and the cleaned names.
 - Column types are inferred when the file is loaded (integer, real, text, date stored as text).
 - Inspection tools: row and column counts, column names and types, sample rows, and basic descriptive statistics.
 - A SQL tool that runs one read-only query written by the agent and returns at most a fixed number of rows (for example 100).
@@ -64,12 +64,12 @@ Tools find the current session's database path from the session state, so the ag
 **Validation before loading**
 
 - The file extension must be `.csv` or `.xlsx`. Anything else is rejected with an "unsupported file type" message.
-- The file size must be under a set limit (for example 10 MB).
+- The file size must be under a set limit (500 KB).
 - The file must open without errors (bad encoding or a corrupt workbook gives a "could not read file" message).
 - After parsing, the table must have at least one data row and at least one column.
-- Headers must be usable: no blank columns. If all headers look auto-generated (`Unnamed: 0`, …), the file is rejected with "no header row detected".
+- The file must have a header row. Headers must be non-blank, text (not plain numbers), and unique (no duplicate column names). If all headers look auto-generated (`Unnamed: 0`, …), the file is rejected with "no header row detected"; any other violation gets its own specific error.
 
-Every validation error is shown in the UI as a short, plain-language message. No database is created for a file that fails validation.
+Every validation error is shown in the UI as a short, plain-language message. A file that fails validation changes nothing: the current database (the sample at first) stays in place.
 
 **SQL safety (read-only)**
 
@@ -99,7 +99,7 @@ The demo works when all of these are true:
 
 - [ ] A valid CSV and a valid single-sheet XLSX each upload and show the correct row count, column count, and preview.
 - [ ] Uploading a multi-sheet XLSX loads only the first sheet and lists the ignored sheets.
-- [ ] Unsupported, empty, unreadable, and headerless files each show a clear, specific error, and no database is created.
+- [ ] Unsupported, empty, unreadable, and headerless, numeric-header, and duplicate-header files each show a clear, specific error, and the current data is unchanged.
 - [ ] "How many records are there?" returns the correct count.
 - [ ] "What is the average sales amount?" returns the correct value for a sample sales file.
 - [ ] "Which category has the highest total revenue?" returns the correct category, using a SQL aggregation.

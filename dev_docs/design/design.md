@@ -18,11 +18,15 @@ Browser ──upload──▶ app.py ──▶ ingest.py ──▶ <temp>/<sessi
                       └──── final answer ◀──── tools.py ──read-only──▶ data.db
 ```
 
+**Session start**
+
+Every new session, in Streamlit or in ADK Web, starts with table `data` loaded from `sample_data/sales.csv` (through the same `load_file`), so the user can ask questions right away. Streamlit does this when it creates the session. ADK Web does it in the agent's `before_agent_callback` (§4), because it creates sessions with empty state.
+
 **Upload flow**
 
 1. `app.py` receives the file from `st.file_uploader`.
 2. `ingest.py` validates and parses it into a DataFrame, cleans the column names, infers types, and writes table `data` to the session database.
-3. On success, `app.py` creates a new ADK session whose state holds `db_path` and a short `schema_summary`. The UI shows a summary and a preview. On failure, it shows the error and creates nothing.
+3. On success, the uploaded data **replaces** the sample (or previous) data: `app.py` creates a new ADK session whose state holds `db_path` and a short `schema_summary`, and the UI shows a summary and a preview. On failure, the existing database and ADK session are **kept unchanged**, and the UI shows the specific error.
 
 **Question flow**
 
@@ -55,7 +59,7 @@ spreadsheet-qa/
 │   ├── ingest.py          # validation, column cleaning, type inference, SQLite load
 │   └── sessions.py        # temp-dir creation, activity tracking, cleanup
 ├── sample_data/           # sales.csv, sales.xlsx, multi_sheet.xlsx, and invalid files
-├── .streamlit/config.toml # server.maxUploadSize = 10
+├── .streamlit/config.toml # server.maxUploadSize = 1 (whole MB; the 500 KB limit is enforced in ingest)
 ├── .env
 └── requirements.txt
 ```
@@ -64,7 +68,7 @@ spreadsheet-qa/
 
 ## 4. Agent and Tools
 
-**Agent:** one `Agent(name="data_analyst", model=AGENT_MODEL, instruction=..., tools=[...])`. It has no sub-agents, output schema, or callbacks.
+**Agent:** one `Agent(name="data_analyst", model=AGENT_MODEL, instruction=..., tools=[...])`. It has no sub-agents or output schema. Its only callback is a `before_agent_callback` that loads the sample data when the session state has no `db_path`, `column_map`, or `schema_summary` (ADK Web). It does nothing in Streamlit, where the state is always set.
 
 **Instruction (main points):**
 
@@ -96,15 +100,17 @@ Every tool returns `{"status": "success", ...}` or `{"status": "error", "error_m
 **Validation (in this order; the first failure stops ingestion):**
 
 1. **Extension** is `.csv` or `.xlsx`. Otherwise: "Unsupported file type. Upload a .csv or .xlsx file."
-2. **Size** is at most 10 MB. This is checked on `uploaded_file.size` and also enforced by Streamlit's config.
+2. **Size** is at most 500 KB. This is checked in `load_file` on the file bytes. Streamlit's `maxUploadSize` only takes whole MB, so it is set to 1 as a coarse backstop.
 3. **Readable:**
    - CSV is read with `pd.read_csv(encoding="utf-8-sig")`, which also accepts files with a BOM.
    - XLSX is opened with `pd.ExcelFile(engine="openpyxl")`.
    - A decode or parse error gives "Could not read the file: \<reason\>."
 4. **Not empty:** after columns and rows that are completely empty are dropped, there must be at least 1 row and at least 1 column.
-5. **Headers usable:**
+5. **Header row present and valid.** The uploaded file must have a header row. After empty columns are dropped, the checks run in this order and the first failure stops ingestion:
    - If *every* header is auto-generated (`Unnamed: N`), the result is "No header row detected."
-   - If *some* remaining column has a blank header, the result is "Column N has no header."
+   - If *some* column has a blank header, the result is "Column N has no header."
+   - Every header must be a **string**. A header that is a plain number (for example `1001` or `2024.5`) is rejected with "Column N header must be text, not a number: '1001'." This also catches files whose first row is data.
+   - Headers must be **unique**. Two headers are duplicates if they are equal after trimming and cleaning (so `Order ID` and `order_id` clash). The result is "Duplicate column name: 'A' (column i) and 'B' (column j)." Nothing is renamed automatically.
 
 **Excel worksheets:** the app reads `ExcelFile.sheet_names` and loads only `sheet_names[0]`. If there are more sheets, the result includes `ignored_sheets`, and the UI shows: "Loaded sheet 'X'. Ignored: 'Y', 'Z'."
 
@@ -115,7 +121,7 @@ Every tool returns `{"status": "success", ...}` or `{"status": "error", "error_m
   - trim, lowercase, and replace each run of non-alphanumeric characters with `_`
   - strip leading and trailing `_`
   - add a `c_` prefix if the name starts with a digit
-  - if two names collide, add `_2`, `_3`, …
+  - names are unique by this point (validation step 5 rejects duplicates), so no collision handling is needed
 - The map from cleaned names to original names is saved in session state and shown by `get_table_info`.
 
 **Type inference** (one simple pass, per column):
@@ -163,10 +169,13 @@ Every tool returns `{"status": "success", ...}` or `{"status": "error", "error_m
 | Event | Action |
 |---|---|
 | App process starts | `sessions.purge_all()` deletes all of `adk_sheet_qa/`. It runs once per process through `@st.cache_resource`. |
-| First page load | Create `session_id`, the folder, and the runner. Set `last_active = now`. |
-| Valid upload | Delete the old `upload.*` and `data.db`, load the new file, and replace the ADK session (`delete_session` + `create_session` with the new state). Clear the chat history. |
+| First page load | Create `session_id`, the folder, and the runner. Load `sample_data/sales.csv` into `data.db` and create the ADK session with its state. Set `last_active = now`. |
+| Valid upload | Replace `data.db` with the new data, and replace the ADK session (`delete_session` + `create_session` with the new state). Clear the chat history. |
+| Invalid upload | Keep `data.db`, the ADK session, and the chat unchanged. Show the validation error with `st.error`. |
 | Each rerun (any interaction) | If `now - last_active` is more than 30 minutes, run **end session**. Otherwise update `last_active` and touch the folder's modified time. Also delete any *other* session folder whose modified time is older than 30 minutes, which catches tabs that were closed. |
 | **End session** button | Delete the folder, then clear `st.session_state`. The next rerun starts a new session. |
+
+> **Decision — replace the database only after validation, and atomically.** `load_file` validates everything before it writes. It then writes to a temporary file in the session folder and swaps it in with `os.replace`, so a failed write never leaves the session without data.
 
 > **Decision — clean up on reruns, with no background thread.** Streamlit can't tell when a tab closes. Purging when the app starts and sweeping old folders on each rerun covers abandoned sessions without a scheduler, which is enough for a local demo.
 
@@ -178,12 +187,14 @@ Deletion uses `shutil.rmtree(..., ignore_errors=True)`. A failed delete is logge
 
 - [ ] `ingest` loads `sales.csv` and `sales.xlsx` with the expected row and column counts and cleaned names.
 - [ ] `multi_sheet.xlsx` loads only the first sheet and reports the ignored sheet names.
-- [ ] A `.txt` file, an empty CSV, a corrupt `.xlsx`, and a headerless CSV each return the expected error, and no `data.db` is created.
+- [ ] A `.txt` file, an empty CSV, a corrupt `.xlsx`, a headerless CSV, a CSV with a numeric header, and a CSV with duplicate headers each return the expected error, and no `data.db` is created.
 - [ ] `run_sql("SELECT COUNT(*) FROM data")` succeeds, and a query returning more than 100 rows comes back with `truncated=True`.
 - [ ] `run_sql` rejects `DELETE FROM data`, `WITH x AS (SELECT 1) DELETE FROM data`, and a query with two statements, and the row count is unchanged afterward.
 
 **End to end** (`streamlit run app.py`, using `sales.csv`):
 
+- [ ] A new session (Streamlit or ADK Web) answers "How many records are there?" with 50 before any upload.
+- [ ] An invalid upload shows its error, and the previous data can still be queried.
 - [ ] "How many records are there?" returns the correct count, citing `get_table_info` or the SQL.
 - [ ] "What is the average sales amount?" matches the value pandas computes.
 - [ ] "Which category has the highest total revenue?" returns the correct category, and the expander shows a `GROUP BY` query.
@@ -195,7 +206,7 @@ Deletion uses `shutil.rmtree(..., ignore_errors=True)`. A failed delete is logge
 
 - A single user runs the demo locally. In-memory ADK sessions are fine, and history is lost when the app restarts.
 - CSV files are UTF-8 and comma-delimited. Delimiter detection is not needed for v1.
-- Files of 10 MB or less fit comfortably in memory with pandas.
+- Files of 500 KB or less fit comfortably in memory with pandas.
 - Gemini access is configured through `.env`, the same way as in the other course folders.
 
 ## 10. Future Backlog
