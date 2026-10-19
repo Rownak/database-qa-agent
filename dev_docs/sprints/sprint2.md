@@ -113,8 +113,8 @@
 
 **Goal:** a public Streamlit service that calls the private backend as `data-qa-ui-sa`.
 
-- [ ] Grant `data-qa-ui-sa` `roles/run.invoker` on `data-qa-api` only: `gcloud run services add-iam-policy-binding data-qa-api --member=serviceAccount:data-qa-ui-sa@... --role=roles/run.invoker`.
-- [ ] Build and deploy the UI. Either point the deploy at `Dockerfile.ui` through Cloud Build, or name it `Dockerfile` in a small `ui/` build context:
+- [x] Grant `data-qa-ui-sa` `roles/run.invoker` on `data-qa-api` only: `gcloud run services add-iam-policy-binding data-qa-api --member=serviceAccount:data-qa-ui-sa@... --role=roles/run.invoker`.
+- [x] Build and deploy the UI. Either point the deploy at `Dockerfile.ui` through Cloud Build, or name it `Dockerfile` in a small `ui/` build context:
   ```
   gcloud run deploy data-qa-ui --source <ui build context> --region=us-central1 \
     --allow-unauthenticated --service-account=data-qa-ui-sa@<PROJECT_ID>.iam.gserviceaccount.com \
@@ -122,33 +122,33 @@
     --cpu=1 --memory=512Mi --min-instances=0 --max-instances=1 --session-affinity --timeout=3600
   ```
   Use `--session-affinity` and the longer timeout to keep the Streamlit WebSocket on one instance. The backend stays private.
-- [ ] Open the UI URL. The sample data loads, and "How many records are there?" returns 50 with a `Source:` line.
-- [ ] Delete old images in Artifact Registry (`cloud-run-source-deploy`) after a successful deploy, or add a cleanup policy that keeps the last 2 images.
+- [x] Open the UI URL. The sample data loads, and "How many records are there?" returns 50 with a `Source:` line.
+- [x] Delete old images in Artifact Registry (`cloud-run-source-deploy`) after a successful deploy, or add a cleanup policy that keeps the last 2 images.
 
 ## Phase 2.6 — End-to-End Verification, Cost Check, README
 
 **Goal:** Sprint 1's acceptance criteria pass on Cloud Run, costs and limits are confirmed, and the README explains deployment.
 
-- [ ] Rerun the Sprint 1.7 checks on the UI URL:
+- [x] Rerun the Sprint 1.7 checks on the UI URL:
   - valid and invalid uploads
   - the five example questions
   - the delete refusal
   - the `Source:` line on every answer
   - **End session**
-- [ ] Session isolation: two browser windows with different uploads each get their own answers.
-- [ ] Instance lifecycle:
+- [x] Session isolation: two browser windows with different uploads each get their own answers.
+- [x] Instance lifecycle:
   1. Wait until both services scale to 0, or force a new revision.
   2. Ask again.
   3. The UI recreates the session and shows the reset notice, and the answer uses the same uploaded data.
-- [ ] Cold start: record the first-request latency for each service. Record the backend's peak memory. Apply `--memory=1Gi` to the backend only if needed, and note it.
-- [ ] Logs: confirm one Cloud Logging query shows backend ingest, tool and error lines and UI errors, with no file contents or secrets.
-- [ ] Cost check after a day of testing: review the billing report for Cloud Run, Cloud Build, Artifact Registry and Secret Manager. Confirm the budget alert is active.
-- [ ] Update `README.md` with a short **Deploy to Cloud Run** section:
+- [x] Cold start: record the first-request latency for each service. Record the backend's peak memory. Apply `--memory=1Gi` to the backend only if needed, and note it.
+- [x] Logs: confirm one Cloud Logging query shows backend ingest, tool and error lines and UI errors, with no file contents or secrets.
+- [ ] Cost check after a day of testing: review the billing report for Cloud Run, Cloud Build, Artifact Registry and Secret Manager. Confirm the budget alert is active. *(Partly done: budget alert confirmed active and usage checked via Cloud Monitoring; the billing report after a day of use is still to do by hand, see `dev_docs/deploy/deploy.md`.)*
+- [x] Update `README.md` with a short **Deploy to Cloud Run** section:
   - prerequisites
   - the phase 2.1 setup commands
   - both deploy commands
   - how to open the UI
   - cost notes (free tier conditions, open tabs being billed, the budget alert)
   - how to tear down: `gcloud run services delete`, `gcloud secrets delete`, delete Artifact Registry images
-- [ ] Record any failures, fixes and remaining limitations in `dev_docs/execution_logs/sprint_2_6.md`.
-- [ ] Run `uv run pytest` from `spreadsheet-qa/` and confirm all tests pass.
+- [x] Record any failures, fixes and remaining limitations in `dev_docs/execution_logs/sprint_2_6.md`.
+- [x] Run `uv run pytest` from `spreadsheet-qa/` and confirm all tests pass.

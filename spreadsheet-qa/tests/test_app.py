@@ -65,3 +65,13 @@ def test_app_start_purges_old_folders():
         assert not stale.exists()
     finally:
         sessions.end_session(sessions.ROOT / app.session_state.session_id)
+
+
+def test_end_session_after_upload_returns_to_sample_not_the_old_file(at):
+    """The uploader keeps its file across ss.clear(); End session must not reload it."""
+    f = SAMPLES / "multi_sheet.xlsx"
+    at.file_uploader[0].upload(f.name, f.read_bytes()).run()
+    assert "multi_sheet.xlsx" in at.subheader[0].value
+    at.button[0].click().run()
+    assert "sales.csv (sample)" in at.subheader[0].value
+    sessions.end_session(sessions.ROOT / at.session_state.session_id)

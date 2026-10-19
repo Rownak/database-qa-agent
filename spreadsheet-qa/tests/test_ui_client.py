@@ -137,3 +137,28 @@ def test_unreadable_run_response_is_api_error(monkeypatch, sent):
     sent.response = FakeResponse(payload=ValueError("not json"))
     with pytest.raises(ui_client.ApiError, match="unreadable"):
         ui_client.ask("s1", "hi")
+
+
+def test_errors_are_logged_without_bodies(monkeypatch, sent, caplog):
+    monkeypatch.setenv("API_URL", "http://localhost:8000")
+    with caplog.at_level("WARNING", logger="ui_client"):
+        sent.response = FakeResponse(404)
+        with pytest.raises(ui_client.SessionNotFound):
+            ui_client.ask("s1", "secret question text")
+        sent.response = FakeResponse(500)
+        with pytest.raises(ui_client.ApiError):
+            ui_client.create_session("s2", {"upload_b64": "SECRETDATA"})
+        sent.response = requests.ConnectionError("down")
+        with pytest.raises(ui_client.ApiError):
+            ui_client.delete_session("s3")
+    text = caplog.text
+    assert "session not found: POST /run" in text and "HTTP 500" in text and "unreachable: DELETE" in text
+    assert "secret question" not in text and "SECRETDATA" not in text
+
+
+def test_session_calls_allow_for_a_cold_backend_start(monkeypatch, sent):
+    """A cold backend took ~32 s to answer in phase 2.6; the read timeout must exceed that."""
+    monkeypatch.setenv("API_URL", "http://localhost:8000")
+    ui_client.create_session("s1", {})
+    ui_client.delete_session("s1")
+    assert all(r["timeout"][1] >= 60 for r in sent)

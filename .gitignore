@@ -221,3 +221,5 @@ __marimo__/
 
 # Sqlite
 *.db
+# Staged UI image build context (scripts/stage_ui_context.py)
+.ui_build/

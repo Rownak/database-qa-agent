@@ -129,3 +129,11 @@ def test_app_has_no_top_level_adk_import():
     top = [n for n in tree.body if isinstance(n, (ast.Import, ast.ImportFrom))]
     names = [a.name for n in top for a in n.names] + [n.module or "" for n in top if isinstance(n, ast.ImportFrom)]
     assert not [n for n in names if n.startswith(("google.adk", "google.genai", "data_agent.agent"))]
+
+
+def test_end_session_after_upload_starts_a_sample_session(at, backend):
+    f = SAMPLES / "multi_sheet.xlsx"
+    at.file_uploader[0].upload(f.name, f.read_bytes()).run()
+    at.button[0].click().run()
+    assert "sales.csv (sample)" in at.subheader[0].value
+    assert backend.sessions == {at.session_state.api_sid: {}}  # sample state, no upload

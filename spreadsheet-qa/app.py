@@ -84,7 +84,9 @@ def _api_new_session(upload: dict | None) -> None:
     """
     ss = st.session_state
     new_id = uuid.uuid4().hex
-    ui_client.create_session(new_id, _upload_state(upload))
+    # The first request after the backend scaled to zero can take about 30 seconds.
+    with st.spinner("Connecting to the service (the first request after idle can take a minute)..."):
+        ui_client.create_session(new_id, _upload_state(upload))
     old_id, ss.api_sid, ss.upload = ss.get("api_sid"), new_id, upload
     if old_id:
         _api_delete(old_id)
@@ -99,11 +101,19 @@ def _api_delete(api_sid: str) -> None:
 
 
 def _end_agent_session() -> None:
-    """Deletes the backend session (API mode) and the local session folder."""
+    """Ends the current session and clears the page state.
+
+    Deletes the backend session (API mode) and the local folder, then empties
+    ``st.session_state``. The file uploader is given a new key, because a widget keeps
+    its file across ``clear()`` and the "fresh" session would otherwise load it again.
+    """
     ss = st.session_state
     if ss.get("api_sid"):
         _api_delete(ss.api_sid)
     sessions.end_session(ss.session_dir)
+    generation = ss.get("uploader_generation", 0) + 1
+    ss.clear()
+    ss.uploader_generation = generation
 
 
 def _reset_adk_session(result: IngestResult, uploaded) -> None:
@@ -179,7 +189,6 @@ def _ensure_session() -> None:
     ss = st.session_state
     if "session_id" in ss and time.time() - ss.last_active > sessions.MAX_AGE_SECONDS:
         _end_agent_session()
-        ss.clear()
         st.info("Your previous session expired after 30 minutes of inactivity. Starting fresh.")
     if "session_id" not in ss:
         _start_session()
@@ -269,7 +278,11 @@ def main() -> None:
 
     # The left side runs first so an upload resets the chat before the right side draws it.
     with left:
-        uploaded = st.file_uploader("Replace the data with your own file", type=["csv", "xlsx"])
+        uploaded = st.file_uploader(
+            "Replace the data with your own file",
+            type=["csv", "xlsx"],
+            key=f"uploader_{ss.get('uploader_generation', 0)}",
+        )
         _handle_upload(uploaded)
         if ss.upload_error:
             st.error(ss.upload_error)
@@ -284,7 +297,6 @@ def main() -> None:
 
         if st.button("End session"):
             _end_agent_session()
-            ss.clear()
             st.rerun()
 
     with right:

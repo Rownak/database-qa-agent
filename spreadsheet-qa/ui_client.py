@@ -14,6 +14,7 @@ Streamlit dependency, so it can be tested directly.
 
 from __future__ import annotations
 
+import logging
 import os
 import threading
 import time
@@ -24,12 +25,19 @@ import requests
 APP_NAME = "data_agent"  # the agent folder name, which ADK uses as the app name
 USER_ID = "user"
 CONNECT_TIMEOUT_S = 10
-SESSION_TIMEOUT_S = 30
+# A cold backend instance (scale-to-zero) took ~32 s to answer its first request in the
+# phase 2.6 measurements, so session calls get a generous read timeout. A timeout here
+# would make the UI fail at startup with "Could not start a session".
+SESSION_TIMEOUT_S = 90
 # Slightly above the backend's 120 s request timeout so its error arrives first.
 RUN_TIMEOUT_S = 130
 # ID tokens last about an hour; refresh well before that.
 TOKEN_TTL_S = 50 * 60
 _LOCAL_HOSTS = ("localhost", "127.0.0.1", "::1")
+
+# Warnings go to stderr (Cloud Logging on Cloud Run). Only methods, paths and status
+# codes are logged, never request bodies, so uploaded data and tokens stay out of logs.
+logger = logging.getLogger(__name__)
 
 _token_lock = threading.Lock()
 _token_cache: dict[str, tuple[str, float]] = {}  # audience -> (token, fetched_at)
@@ -76,6 +84,7 @@ def _id_token(audience: str) -> str:
 
             token = id_token.fetch_id_token(Request(), audience)
         except Exception as exc:
+            logger.warning("could not get an ID token for %s: %s", audience, exc.__class__.__name__)
             raise ApiError(f"Could not get an ID token for the service: {exc}") from exc
         _token_cache[audience] = (token, time.monotonic())
         return token
@@ -106,10 +115,13 @@ def _request(method: str, path: str, *, json: dict | None = None, timeout: float
             method, base + path, json=json, headers=headers, timeout=(CONNECT_TIMEOUT_S, timeout)
         )
     except requests.RequestException as exc:
+        logger.warning("backend unreachable: %s %s (%s)", method, path, exc.__class__.__name__)
         raise ApiError(f"Could not reach the service: {exc}") from exc
     if resp.status_code == 404:
+        logger.warning("backend session not found: %s %s", method, path)
         raise SessionNotFound("The session was not found on the service.")
     if resp.status_code >= 400:
+        logger.warning("backend error: %s %s -> HTTP %s", method, path, resp.status_code)
         raise ApiError(f"The service returned HTTP {resp.status_code}.")
     return resp
 
