@@ -1,0 +1,77 @@
+Shipment Delay Policy
+
+Document SDP-2026, effective 1 January 2026. Owner: Logistics Operations.
+
+1 Purpose and Scope
+
+1.1 Purpose
+This policy defines when a shipment is considered delayed, how long operations staff may monitor a delay before acting, and when and how a delay must be escalated.
+
+1.2 Scope
+This policy applies to Standard, Express and International shipments handled by the operations team. Shipment types not listed in Section 3 are handled under the general rules in Section 2 and Section 4.
+
+2 Definitions and General Rules
+
+2.1 Delayed shipment
+A shipment is delayed when it has not been delivered by its expected delivery date. The number of days delayed is counted in calendar days from the expected delivery date.
+
+2.2 Grace period
+The grace period is the number of days after the expected delivery date during which staff monitor the shipment but do not escalate it. During the grace period staff must:
+(a) confirm the current location and status in the tracking system at least once per day;
+(b) contact the carrier if the tracking record has not been updated for more than 24 hours;
+(c) notify the customer as described in the Customer Communication Guidelines.
+
+2.3 Escalation threshold
+The escalation threshold is the number of days delayed at which a shipment must be escalated under Section 4. A shipment that reaches its threshold must be escalated on the same business day.
+
+2.4 Shipments without a type-specific rule
+If a shipment type has no rule in Section 3, staff apply a grace period of 2 days and an escalation threshold of 4 days, and record in the case notes that the general rule was used.
+
+3 Rules by Shipment Type
+
+3.1 Standard Shipments
+(a) Grace period: 2 days.
+(b) Escalation threshold: 4 days.
+(c) Within the grace period, staff monitor the shipment and send the customer a delay notice. No credit is offered at this stage.
+(d) At the escalation threshold, staff open a Tier 1 escalation case.
+
+3.2 Express Shipments
+Express shipments carry a delivery commitment, so delays are acted on quickly.
+(a) Grace period: 1 day.
+(b) Escalation threshold: 2 days.
+(c) On the first day of delay, staff must call the carrier and request a recovery plan with a new delivery date.
+(d) At the escalation threshold, staff open a Tier 2 escalation case directly, without a Tier 1 case.
+(e) If the shipment is still undelivered 2 days after the escalation, staff offer the customer a refund of the express surcharge.
+
+3.3 International Shipments
+International shipments may be held by customs authorities, which is outside the carrier's control.
+(a) Grace period: 3 days.
+(b) Escalation threshold: 5 days.
+(c) For shipments in Customs Hold status, staff first check that all customs documents were submitted, following the International Shipping Procedures.
+(d) At the escalation threshold, staff open a Tier 1 escalation case and attach the customs reference number.
+
+4 Escalation Procedure
+
+4.1 Escalation tiers
+(a) Tier 1: the shift supervisor reviews the case within 1 business day and agrees an action plan with the carrier.
+(b) Tier 2: the regional operations manager reviews the case within 4 business hours and may authorise re-shipment or a refund.
+(c) Tier 3: the head of logistics reviews cases that remain unresolved 3 business days after a Tier 2 escalation, or any case involving a lost shipment.
+
+4.2 Opening a case
+To open an escalation case, staff record the shipment ID, shipment type, current status, current location, days delayed and the actions already taken. The case must reference the section of this policy that triggered it.
+
+4.3 Escalation contacts
+(a) Tier 1: shift supervisor, ops-supervisor@example.com.
+(b) Tier 2: regional operations manager, ops-regional@example.com, phone extension 4410.
+(c) Tier 3: head of logistics, logistics-head@example.com.
+
+4.4 Closing a case
+A case is closed when the shipment is delivered, re-shipped or refunded, and the customer has been told the outcome. Staff record the closing reason and the total days delayed.
+
+5 Exceptions
+
+5.1 Shipments in Exception status
+A shipment in Exception status (for example damaged, refused or lost) is escalated to Tier 2 immediately, regardless of the number of days delayed.
+
+5.2 Force majeure
+Delays caused by severe weather, strikes or government action are still monitored and escalated under this policy, but compensation decisions follow the Customer Communication Guidelines.

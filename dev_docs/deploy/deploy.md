@@ -8,7 +8,7 @@
 - Budget: $10/month, alerts at 50/90/100%
 
 # Deploy and tear down commands
-Run from `spreadsheet-qa/`. One-time project setup is in [phase_2_1_gcp_setup.md](phase_2_1_gcp_setup.md). Replace `<PROJECT_ID>`, `<API_URL>`.
+Run from `db-doc-qa/`. One-time project setup is in [phase_2_1_gcp_setup.md](phase_2_1_gcp_setup.md). Replace `<PROJECT_ID>`, `<API_URL>`.
 
 **1. Backend (`data-qa-api`)**
 ```

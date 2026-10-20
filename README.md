@@ -26,11 +26,11 @@ optional CSV/XLSX upload┘
 
 ```bash
 git clone https://github.com/Rownak/database-qa-agent.git
-cd database-qa-agent/spreadsheet-qa
+cd database-qa-agent/db-doc-qa
 uv sync
 ```
 
-Create `spreadsheet-qa/.env`:
+Create `db-doc-qa/.env`:
 
 ```
 GOOGLE_API_KEY=<your-gemini-api-key>
@@ -40,7 +40,7 @@ GOOGLE_API_KEY=<your-gemini-api-key>
 
 ## Run locally
 
-Run all commands from `spreadsheet-qa/`.
+Run all commands from `db-doc-qa/`.
 
 **Streamlit app** (upload and chat):
 

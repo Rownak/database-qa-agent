@@ -42,36 +42,36 @@ Every phase ends with the following:
 
 **Goal:** the project is named `db-doc-qa`, the new libraries are installed, and the shipment sample data replaces `sales.csv` as the default. All existing tests pass.
 
-- [ ] **Rename the project folder:**
+- [x] **Rename the project folder:**
   - Rename `spreadsheet-qa/` to `db-doc-qa/` with `git mv`.
   - Set `name = "db-doc-qa"` and a real `description` in `pyproject.toml`.
   - Update the paths in `CLAUDE.md`, `README.md`, `dev_docs/deploy/deploy.md`, `scripts/stage_ui_context.py` and `dev_test/phase_2_6.py`.
   - Leave the Sprint 1–2 logs and `design_v1.md` as they are.
-- [ ] **Add the dependencies:**
+- [x] **Add the dependencies:**
   - `uv add pypdf semchunk` and `uv add --dev fpdf2`.
   - Copy the pinned `pypdf` and `semchunk` versions from `uv.lock` into `data_agent/requirements.txt` and `requirements-ui.txt`.
-- [ ] **Add the table sample:** write `data_agent/sample_data/shipments.csv`, about 60 rows with the columns from project description §8.
+- [x] **Add the table sample:** write `data_agent/sample_data/shipments.csv`, about 60 rows with the columns from project description §8.
   - Include the seeded IDs 12345–12349.
   - Do not include 99999.
-- [ ] **Write the document sources:** write `scripts/sample_docs/*.txt`, the text of the three policy documents.
+- [x] **Write the document sources:** write `scripts/sample_docs/*.txt`, the text of the three policy documents.
   - Use numbered sections and `(a)` clauses.
   - Have no Refrigerated section.
   - Include the 5- versus 7-day conflict for international shipments.
-- [ ] **Generate the PDFs:** add `scripts/make_sample_pdfs.py` (using `fpdf2`), which renders the two policy PDFs into `data_agent/sample_data/docs/`.
+- [x] **Generate the PDFs:** add `scripts/make_sample_pdfs.py` (using `fpdf2`), which renders the two policy PDFs into `data_agent/sample_data/docs/`.
   - At least one section must cross a page break.
   - Copy the international `.txt` file into the same folder.
   - Commit the generated files.
-- [ ] **Add the test fixtures** to `sample_data/`:
+- [x] **Add the test fixtures** to `sample_data/`:
   - `scanned.pdf` (image only)
   - `encrypted.pdf`
   - `oversize_pages.pdf` (21 pages)
   - `empty.txt`, `latin1.txt` and `no_headings.txt`
   - `injection.txt`, which contains an "Ignore previous instructions…" line
-- [ ] **Switch the default sample:** set `SAMPLE_FILE` to `shipments.csv`. Move `sales.csv` into `sample_data/` as a fixture.
-- [ ] **Update the tests:**
+- [x] **Switch the default sample:** set `SAMPLE_FILE` to `shipments.csv`. Move `sales.csv` into `sample_data/` as a fixture.
+- [x] **Update the tests:**
   - Update the tests that assume the default is `sales.csv` with 50 rows (`conftest.py`, `test_app*.py`, `test_ingest.py`, `test_tools.py`).
   - The fixtures that rely on `sales.csv` keep using it explicitly.
-- [ ] **Add a test:** `shipments.csv` loads, with the expected row count and cleaned columns.
+- [x] **Add a test:** `shipments.csv` loads, with the expected row count and cleaned columns.
 
 ## Phase 3.2 — Document Ingestion (`data_agent/doc_ingest.py`)
 
