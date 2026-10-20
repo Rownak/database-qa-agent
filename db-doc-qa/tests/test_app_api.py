@@ -9,7 +9,7 @@ from streamlit.testing.v1 import AppTest
 
 import ui_client
 from data_agent import sessions
-from tests.conftest import SAMPLES
+from tests.conftest import DB_SAMPLES
 
 APP = str(Path(__file__).resolve().parent.parent / "app.py")
 
@@ -62,7 +62,7 @@ def test_start_creates_backend_session_with_sample_state(at, backend):
 
 def test_valid_upload_sends_bytes_and_replaces_old_session(at, backend):
     old = at.session_state.api_sid
-    f = SAMPLES / "multi_sheet.xlsx"
+    f = DB_SAMPLES / "multi_sheet.xlsx"
     at.file_uploader[0].upload(f.name, f.read_bytes()).run()
     new = at.session_state.api_sid
     assert new != old and old in backend.deleted and list(backend.sessions) == [new]
@@ -72,7 +72,7 @@ def test_valid_upload_sends_bytes_and_replaces_old_session(at, backend):
 
 def test_invalid_upload_never_reaches_backend(at, backend):
     old = at.session_state.api_sid
-    f = SAMPLES / "duplicate_header.csv"
+    f = DB_SAMPLES / "duplicate_header.csv"
     at.file_uploader[0].upload(f.name, f.read_bytes()).run()
     assert "Duplicate column name" in at.error[0].value
     assert list(backend.sessions) == [old] and not backend.deleted
@@ -81,7 +81,7 @@ def test_invalid_upload_never_reaches_backend(at, backend):
 def test_backend_failure_on_upload_keeps_current_data(at, backend):
     old = at.session_state.api_sid
     backend.fail_create = True
-    f = SAMPLES / "multi_sheet.xlsx"
+    f = DB_SAMPLES / "multi_sheet.xlsx"
     at.file_uploader[0].upload(f.name, f.read_bytes()).run()
     assert "Could not send the file" in at.error[0].value
     assert at.session_state.api_sid == old and "shipments.csv (sample)" in at.subheader[0].value
@@ -96,7 +96,7 @@ def test_question_is_answered_through_the_backend(at, backend):
 
 
 def test_lost_session_is_recreated_from_held_upload_and_question_retried(at, backend):
-    f = SAMPLES / "multi_sheet.xlsx"
+    f = DB_SAMPLES / "multi_sheet.xlsx"
     at.file_uploader[0].upload(f.name, f.read_bytes()).run()
     at.chat_input[0].set_value("first").run()
     lost = at.session_state.api_sid
@@ -132,7 +132,7 @@ def test_app_has_no_top_level_adk_import():
 
 
 def test_end_session_after_upload_starts_a_sample_session(at, backend):
-    f = SAMPLES / "multi_sheet.xlsx"
+    f = DB_SAMPLES / "multi_sheet.xlsx"
     at.file_uploader[0].upload(f.name, f.read_bytes()).run()
     at.button[0].click().run()
     assert "shipments.csv (sample)" in at.subheader[0].value

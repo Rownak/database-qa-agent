@@ -5,11 +5,11 @@ import sqlite3
 import pytest
 
 from data_agent.ingest import IngestError, IngestResult, load_file
-from tests.conftest import SAMPLES
+from tests.conftest import DB_SAMPLES
 
 
 def _path(name):
-    return SAMPLES / name
+    return DB_SAMPLES / name
 
 
 @pytest.mark.parametrize("name", ["sales.csv", "sales.xlsx", "multi_sheet.xlsx"])
@@ -21,7 +21,7 @@ def test_valid_files_load(name, tmp_path):
 
 
 def test_multi_sheet_reports_ignored_sheet(tmp_path):
-    f = SAMPLES / "multi_sheet.xlsx"
+    f = DB_SAMPLES / "multi_sheet.xlsx"
     assert load_file(f.name, f.read_bytes(), tmp_path / "s").ignored_sheets == ["summary"]
 
 
@@ -37,13 +37,13 @@ def test_multi_sheet_reports_ignored_sheet(tmp_path):
 )
 def test_invalid_files_give_specific_error_and_no_db(name, message, tmp_path):
     session = tmp_path / "s"
-    r = load_file(name, (SAMPLES / name).read_bytes(), session)
+    r = load_file(name, (DB_SAMPLES / name).read_bytes(), session)
     assert isinstance(r, IngestError) and r.message == message
     assert not session.exists()
 
 
 def test_corrupt_xlsx(tmp_path):
-    r = load_file("corrupt.xlsx", (SAMPLES / "corrupt.xlsx").read_bytes(), tmp_path / "s")
+    r = load_file("corrupt.xlsx", (DB_SAMPLES / "corrupt.xlsx").read_bytes(), tmp_path / "s")
     assert isinstance(r, IngestError) and r.message.startswith("Could not read the file")
 
 
@@ -81,7 +81,7 @@ def test_invalid_upload_keeps_existing_db(tmp_path):
     db = load_sample(session).db_path
     before = db.read_bytes()
     for name in ("notes.txt", "empty.csv", "duplicate_header.csv", "corrupt.xlsx"):
-        assert isinstance(load_file(name, (SAMPLES / name).read_bytes(), session), IngestError)
+        assert isinstance(load_file(name, (DB_SAMPLES / name).read_bytes(), session), IngestError)
     assert db.read_bytes() == before
     assert [f.name for f in session.iterdir()] == ["data.db"]
 

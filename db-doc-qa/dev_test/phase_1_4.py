@@ -9,7 +9,7 @@ from google.genai import types
 from data_agent.agent import root_agent
 from data_agent.ingest import load_file
 
-p = Path("sample_data/sales.csv")
+p = Path("sample_data/database/sales.csv")
 r = load_file(p.name, p.read_bytes(), Path(tempfile.mkdtemp()) / 'session')
 state = {'db_path': str(r.db_path), 'column_map': r.column_map, 'schema_summary': r.schema_summary}
 

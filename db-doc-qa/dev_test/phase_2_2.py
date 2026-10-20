@@ -7,7 +7,7 @@ from pathlib import Path
 
 BASE, APP, USER = 'http://localhost:8000', 'data_agent', 'dev'
 sid = uuid.uuid4().hex
-f = Path('sample_data/multi_sheet.xlsx')
+f = Path('sample_data/database/multi_sheet.xlsx')
 
 
 def post(path, body):

@@ -44,8 +44,8 @@ db-doc-qa/
 │   ├── doc_ingest.py      # new: validate, extract, structure-aware chunk, embed, write docs.db
 │   ├── retrieval.py       # new: BM25, dense, filters, RRF
 │   ├── sessions.py        # unchanged (whole folder is swept)
-│   └── sample_data/       # shipments.csv + docs/ (2 PDFs, 1 TXT); sales.csv kept
-├── sample_data/           # test fixtures, plus new document fixtures
+│   └── sample_data/default/   # loaded at session start: shipments.csv + docs/ (2 PDFs, 1 TXT)
+├── sample_data/           # test fixtures only: database/ (tables, incl. sales.csv) and documents/ (PDF, TXT, MD)
 └── scripts/make_sample_pdfs.py   # dev only: renders the sample policy PDFs
 ```
 
@@ -82,11 +82,11 @@ Add them with `uv add pypdf semchunk` and `uv add --dev fpdf2`. Copy the pinned 
 
 **Validation (in order; the first failure stops):**
 
-1. The extension is `.pdf` or `.txt`.
+1. The extension is `.pdf`, `.txt` or `.md`.
 2. The file is at most 1 MB.
 3. The file can be read:
    - **PDF:** `pypdf` must open it, it must not be encrypted, and it must have at most 20 pages.
-   - **TXT:** it must decode as UTF-8 (`utf-8-sig`).
+   - **TXT and MD:** it must decode as UTF-8 (`utf-8-sig`). Markdown is read as plain text; its `#` lines are the headings.
 4. The extracted text is not empty after trimming. A scanned PDF fails here.
 
 The UI enforces the limit of 3 documents and replaces a document that has the same name. Messages are those in the project description (§7). A failure returns a `DocError` (the same pattern as `IngestError`), and the session is left unchanged.
@@ -97,7 +97,7 @@ The UI enforces the limit of 3 documents and replaces a document that has the sa
 2. **Find headings line by line with regular expressions:**
    - numbered headings `^\d+(\.\d+)*\s+\S`, where the depth is the number of dots plus 1
    - clause markers `^\(?[a-z]{1,3}\)`
-   - `#` headings in TXT files
+   - `#` headings in TXT and MD files, where the level is the number of `#`
    - short lines in title case or all capitals, with no closing full stop
 3. **Build the section paths with a stack.** Each heading closes any open heading at the same or deeper level, so every heading knows its parent, for example `3 Escalation > 3.2 Express Shipments`.
 4. **Split each section with `semchunk`**:
@@ -186,7 +186,7 @@ The agent cites only passages returned in the current turn, and never states a n
 
 ## 7. UI Changes (`app.py`)
 
-- **Documents uploader:** one file at a time (`type=["pdf", "txt"]`). Accepted files are listed with their pages and chunk counts and a **Remove** button. The 3-document limit and replacing same-name files are checked here.
+- **Documents uploader:** one file at a time (`type=["pdf", "txt", "md"]`). Accepted files are listed with their pages and chunk counts and a **Remove** button. The 3-document limit and replacing same-name files are checked here.
 - **Expander:** "How this was answered" also shows each `search_documents` call (its query and filters) and the citations of the passages it returned. Two code changes support this:
   - `ui_client.parse_events`, and the event loop used in local mode, also collect `functionResponse` parts and match each one to its call.
   - `_render_calls` displays a call according to its tool name: SQL for `run_sql`, and the query plus the list of citations for `search_documents`. Today it renders any `query` argument as SQL.
@@ -196,7 +196,7 @@ The agent cites only passages returned in the current turn, and never states a n
 
 **Without the LLM** (`uv run pytest`):
 
-- [ ] `doc_ingest.prepare` accepts the sample PDFs and TXT file. It rejects the wrong extension, oversize, more than 20 pages, encrypted, scanned and empty files, and non-UTF-8 text, each with its message.
+- [ ] `doc_ingest.prepare` accepts the sample PDFs, TXT file and Markdown fixture. It rejects the wrong extension, oversize, more than 20 pages, encrypted, scanned and empty files, and non-UTF-8 text, each with its message.
 - [ ] Chunking gives the expected `section_path`, `section_number` and page range for known sections of the sample policy. The no-heading fixture uses the fallback.
 - [ ] `retrieval`:
   - BM25 finds `"Customs Hold"`.

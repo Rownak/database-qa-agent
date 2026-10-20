@@ -7,7 +7,7 @@ from streamlit.testing.v1 import AppTest
 from data_agent import sessions
 from data_agent.ingest import IngestError, load_file
 
-S = Path('sample_data')
+S = Path('sample_data/database')
 print('--- files ---')
 for n in ['sales.csv', 'sales.xlsx', 'multi_sheet.xlsx', 'notes.txt', 'empty.csv', 'headerless.csv',
           'numeric_header.csv', 'duplicate_header.csv', 'corrupt.xlsx']:
@@ -16,7 +16,7 @@ for n in ['sales.csv', 'sales.xlsx', 'multi_sheet.xlsx', 'notes.txt', 'empty.csv
     print(n, '->', r.message if isinstance(r, IngestError) else (r.row_count, r.column_count, r.ignored_sheets),
           '| db created:', (sd / 'data.db').exists())
 
-df = pd.read_csv('sample_data/sales.csv')
+df = pd.read_csv('sample_data/database/sales.csv')
 print('--- pandas ---')
 print('avg sales_amount:', df['sales_amount'].mean())
 print('top revenue category:', df.groupby('category')['revenue'].sum().idxmax())

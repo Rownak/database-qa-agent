@@ -25,7 +25,7 @@ FILES = [
     ".streamlit/config.toml",
     "data_agent/ingest.py",
     "data_agent/sessions.py",
-    "data_agent/sample_data/shipments.csv",
+    "data_agent/sample_data/default/shipments.csv",
 ]
 
 

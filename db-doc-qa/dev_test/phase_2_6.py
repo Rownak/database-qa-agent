@@ -16,8 +16,8 @@ import pandas as pd
 from playwright.sync_api import sync_playwright
 
 UI = os.environ.get('UI_URL', 'https://data-qa-ui-701944778941.us-central1.run.app')
-S = Path('sample_data').resolve()
-SALES = Path('sample_data/sales.csv').resolve()
+S = Path('sample_data/database').resolve()
+SALES = Path('sample_data/database/sales.csv').resolve()
 
 
 def msgs(page):

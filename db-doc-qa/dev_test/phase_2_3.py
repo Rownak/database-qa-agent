@@ -13,7 +13,7 @@ at.chat_input[0].set_value('How many records are there?').run()
 for m in at.session_state.messages:
     print(m['role'], '->', m['content'], [c['name'] for c in m.get('calls', [])])
 
-f = open('sample_data/multi_sheet.xlsx', 'rb')
+f = open('sample_data/database/multi_sheet.xlsx', 'rb')
 at.file_uploader[0].upload('multi_sheet.xlsx', f.read()).run()
 print('after upload:', at.subheader[0].value, '| backend session:', at.session_state.api_sid)
 at.chat_input[0].set_value('What is the total revenue?').run()

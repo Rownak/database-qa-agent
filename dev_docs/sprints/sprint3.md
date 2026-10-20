@@ -57,7 +57,7 @@ Every phase ends with the following:
   - Use numbered sections and `(a)` clauses.
   - Have no Refrigerated section.
   - Include the 5- versus 7-day conflict for international shipments.
-- [x] **Generate the PDFs:** add `scripts/make_sample_pdfs.py` (using `fpdf2`), which renders the two policy PDFs into `data_agent/sample_data/docs/`.
+- [x] **Generate the PDFs:** add `scripts/make_sample_pdfs.py` (using `fpdf2`), which renders the two policy PDFs into `data_agent/sample_data/default/docs/`.
   - At least one section must cross a page break.
   - Copy the international `.txt` file into the same folder.
   - Commit the generated files.
@@ -72,6 +72,18 @@ Every phase ends with the following:
   - Update the tests that assume the default is `sales.csv` with 50 rows (`conftest.py`, `test_app*.py`, `test_ingest.py`, `test_tools.py`).
   - The fixtures that rely on `sales.csv` keep using it explicitly.
 - [x] **Add a test:** `shipments.csv` loads, with the expected row count and cleaned columns.
+- [x] **Support `.md` documents:** Markdown files are accepted as documents, alongside `.pdf` and `.txt`.
+  - Treat `.md` like `.txt`: UTF-8, 1 MB limit, and `#` headings as section headings.
+  - Update `project_description.md` (§3 inputs, §7 validation message) and `design.md` (§2 chunking, §4 validation) to list `.pdf`, `.txt` and `.md`.
+  - Update the extension check wording in Phase 3.2 and the UI uploader type list in Phase 3.6.
+  - Add a small `.md` fixture with `#`/`##` headings to `sample_data/`.
+- [x] **Reorganize `sample_data/`:** separate database files from document files, and add a `default/` folder for the files loaded when the app starts.
+  - Target layout under `db-doc-qa/`:
+    - `data_agent/sample_data/default/`: the files a new session loads, `shipments.csv` and `docs/` (the shipment policy documents). It stays inside the package, so `adk deploy` still ships it.
+    - `sample_data/database/`: table files used by tests (`sales.csv`, `sales.xlsx`, `multi_sheet.xlsx`, and the invalid CSV/XLSX files).
+    - `sample_data/documents/`: document files used by tests (the PDF, TXT and MD fixtures).
+  - Move files with `git mv`. Update `SAMPLE_FILE` and the default documents folder, `tests/conftest.py` and the tests, `dev_test/` scripts, `scripts/make_sample_pdfs.py`, `scripts/stage_ui_context.py` and `Dockerfile.ui`.
+  - The folders under `db-doc-qa/sample_data/` hold test files only.
 
 ## Phase 3.2 — Document Ingestion (`data_agent/doc_ingest.py`)
 
@@ -81,7 +93,7 @@ Every phase ends with the following:
   - extension
   - size of 1 MB or less
   - `pypdf` can open the file, it is not encrypted, and it has 20 pages or fewer
-  - TXT files decode as `utf-8-sig`
+  - TXT and MD files decode as `utf-8-sig`
   - the extracted text is not empty
 - [ ] **Extract text** page by page and keep a map from character offsets to pages.
 - [ ] **Find headings** with the regular-expression rules (numbered headings, `(a)` clauses, `#` lines, lines that look like titles). Use a stack to build `section_path`, `section_number` and `level`.
@@ -180,7 +192,7 @@ Every phase ends with the following:
 **Goal:** users can manage documents, see how each answer was produced, and nothing outlives its session.
 
 - [ ] **Document uploader** in `app.py`:
-  - One file at a time (`pdf`, `txt`), validated with `doc_ingest.prepare`.
+  - One file at a time (`pdf`, `txt`, `md`), validated with `doc_ingest.prepare`.
   - The 3-document limit, and replacing a document that has the same name.
   - A list of documents (name, pages, chunks) with a **Remove** button.
   - Errors are shown with `st.error`, and the session is left unchanged.

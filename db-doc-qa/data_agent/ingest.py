@@ -26,7 +26,9 @@ DB_FILENAME = "data.db"
 MAX_FILE_BYTES = 500 * 1024
 PREVIEW_ROWS = 10
 # Inside the package so ``adk deploy`` (which uploads only this folder) ships it.
-SAMPLE_FILE = Path(__file__).resolve().parent / "sample_data" / "shipments.csv"
+SAMPLE_DIR = Path(__file__).resolve().parent / "sample_data" / "default"
+SAMPLE_FILE = SAMPLE_DIR / "shipments.csv"
+SAMPLE_DOCS_DIR = SAMPLE_DIR / "docs"  # default documents; loaded by the document pipeline
 SUPPORTED_EXTENSIONS = (".csv", ".xlsx")
 
 _UNNAMED_RE = re.compile(r"^Unnamed: \d+")
@@ -138,7 +140,7 @@ def load_file(
 
 
 def load_sample(session_dir: str | Path) -> IngestResult | IngestError:
-    """Loads the bundled ``data_agent/sample_data/shipments.csv`` as a session's starting data.
+    """Loads the bundled ``data_agent/sample_data/default/shipments.csv`` as a session's starting data.
 
     Every new session (Streamlit or ADK Web) starts from this so questions can be
     asked before any upload (design section 1).

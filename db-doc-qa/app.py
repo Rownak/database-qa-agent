@@ -1,6 +1,6 @@
 """Streamlit front end: upload a CSV/XLSX, then chat with the data (design sections 1 and 7).
 
-Every browser session starts with ``data_agent/sample_data/shipments.csv`` loaded. A valid upload
+Every browser session starts with ``data_agent/sample_data/default/shipments.csv`` loaded. A valid upload
 replaces the data and resets the chat; an invalid one shows an error and changes
 nothing. Run with ``uv run streamlit run app.py``.
 

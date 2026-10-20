@@ -7,8 +7,9 @@ import pytest
 
 from data_agent.ingest import load_file
 
-SAMPLES = Path(__file__).resolve().parent.parent / "sample_data"  # test fixtures, including sales.csv
-SALES = SAMPLES / "sales.csv"  # the v1 dataset; tool tests rely on its known values
+DB_SAMPLES = Path(__file__).resolve().parent.parent / "sample_data" / "database"  # table fixtures, including sales.csv
+DOC_SAMPLES = Path(__file__).resolve().parent.parent / "sample_data" / "documents"  # document fixtures
+SALES = DB_SAMPLES / "sales.csv"  # the v1 dataset; tool tests rely on its known values
 
 
 @pytest.fixture

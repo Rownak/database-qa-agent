@@ -1,11 +1,11 @@
 """Builds the sample policy documents and the PDF test fixtures (developer tool).
 
-The demo's default documents live in ``data_agent/sample_data/docs/``. Their text is
+The demo's default documents live in ``data_agent/sample_data/default/docs/``. Their text is
 kept as plain ``.txt`` sources in ``scripts/sample_docs/`` so it can be reviewed and
 edited; this script renders two of them to PDF with ``fpdf2`` (a dev-only dependency)
 and copies the third as-is, so the sample set covers both supported formats. It also
 writes the PDF fixtures the document-ingestion tests need (image-only, encrypted, too
-many pages) into ``sample_data/``. The generated files are committed; rerun the script
+many pages) into ``sample_data/documents/``. The generated files are committed; rerun the script
 only after editing a source.
 
 Run from ``db-doc-qa/``::
@@ -26,8 +26,8 @@ from pypdf import PdfReader, PdfWriter
 
 ROOT = Path(__file__).resolve().parent.parent
 SOURCES = ROOT / "scripts" / "sample_docs"
-DOCS_OUT = ROOT / "data_agent" / "sample_data" / "docs"
-FIXTURES_OUT = ROOT / "sample_data"
+DOCS_OUT = ROOT / "data_agent" / "sample_data" / "default" / "docs"
+FIXTURES_OUT = ROOT / "sample_data" / "documents"
 
 PDF_SOURCES = ("shipment_delay_policy.txt", "customer_communication_guidelines.txt")
 TEXT_SOURCES = ("international_shipping_procedures.txt",)

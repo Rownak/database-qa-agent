@@ -9,7 +9,7 @@ import pytest
 
 from data_agent import sessions
 from data_agent.agent import AGENT_MODEL, INSTRUCTION, ensure_data, root_agent
-from tests.conftest import SAMPLES
+from tests.conftest import DB_SAMPLES
 
 
 def test_agent_definition():
@@ -54,13 +54,13 @@ def test_ensure_data_builds_sample_when_no_upload(root):
 
 
 def test_ensure_data_builds_valid_upload(root):
-    ctx = _ctx(**_upload(SAMPLES / "multi_sheet.xlsx"))
+    ctx = _ctx(**_upload(DB_SAMPLES / "multi_sheet.xlsx"))
     ensure_data(ctx)
     assert Path(ctx.state["db_path"]).is_file() and "load_error" not in ctx.state
 
 
 def test_ensure_data_invalid_upload_falls_back_to_sample(root):
-    ctx = _ctx(**_upload(SAMPLES / "duplicate_header.csv"))
+    ctx = _ctx(**_upload(DB_SAMPLES / "duplicate_header.csv"))
     ensure_data(ctx)
     assert "Duplicate column name" in ctx.state["load_error"]
     assert ctx.state["schema_summary"].startswith("shipment_id")  # the sample
@@ -74,7 +74,7 @@ def test_ensure_data_corrupt_base64_falls_back_to_sample(root):
 
 
 def test_ensure_data_rebuilds_upload_after_db_deleted(root):
-    ctx = _ctx(**_upload(SAMPLES / "multi_sheet.xlsx"))
+    ctx = _ctx(**_upload(DB_SAMPLES / "multi_sheet.xlsx"))
     ensure_data(ctx)
     db = Path(ctx.state["db_path"])
     db.unlink()  # what a new Cloud Run instance looks like

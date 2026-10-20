@@ -36,11 +36,11 @@ Objectives:
 | Slot | Formats | Limit | Behaviour |
 |---|---|---|---|
 | Table | `.csv`, `.xlsx` | 1 file, ≤ 500 KB | Unchanged from v1: a valid upload replaces the current table. |
-| Documents | `.pdf` (text-based), `.txt` (UTF-8) | Up to 3 files, each ≤ 1 MB and ≤ 20 pages | Added one at a time. A file with the same name replaces the existing document. Each document can be removed on its own. |
+| Documents | `.pdf` (text-based), `.txt` and `.md` (UTF-8) | Up to 3 files, each ≤ 1 MB and ≤ 20 pages | Added one at a time. A file with the same name replaces the existing document. Each document can be removed on its own. |
 
 **In scope**
 
-- Two separate uploaders in the UI: **Table** and **Documents**. A `.txt` file is a document, never a table.
+- Two separate uploaders in the UI: **Table** and **Documents**. A `.txt` or `.md` file is a document, never a table.
 - Document ingestion: extract text with page numbers, split it into chunks, store chunks and metadata in SQLite, embed the chunks, and index them for BM25 and dense search.
 - A document retrieval tool with hybrid search, simple metadata filters and rank fusion. It returns passages with citation details.
 - An orchestrator instruction that covers routing, sequencing for hybrid questions, answer structure, citations, and how to report missing or conflicting information.
@@ -48,7 +48,7 @@ Objectives:
 
 **Out of scope for this MVP**
 
-- Scanned PDFs or OCR, `.docx`/`.md`/`.html` files, tables inside PDFs, and images.
+- Scanned PDFs or OCR, `.docx`/`.html` files, tables inside PDFs, and images.
 - More than one table, joins across files, and SQL over document content.
 - Persistent storage or indexes that survive the session, or sharing documents across sessions.
 - Rerankers, query rewriting, sub-agents, and planning or critic loops.
@@ -88,7 +88,7 @@ Objectives:
 | Streamlit UI (`app.py`) | Changed | Adds a document uploader and a list of loaded documents with Remove buttons. Sends the documents in the session state alongside the table. The expander also shows retrieval calls and the passages returned. |
 | UI client (`ui_client.py`) | Existing | Creates, runs and deletes sessions through the API. Parses the new tool's events in the same way as today. |
 | Table ingestion (`ingest.py`) | Existing | Validates and loads one table into `data.db`. |
-| Document ingestion (new module) | New | Validates PDF/TXT files, extracts text page by page, splits it into chunks, attaches metadata, writes `docs.db`, and requests embeddings. |
+| Document ingestion (new module) | New | Validates PDF, TXT and MD files, extracts text page by page, splits it into chunks, attaches metadata, writes `docs.db`, and requests embeddings. |
 | Retrieval (new module) | New | Runs BM25 search (SQLite FTS5) and dense search over stored vectors, applies filters, fuses the rankings (RRF), and formats the passages. |
 | Agent (`agent.py`) | Changed | Same single agent with a new name and instruction (routing, sequencing, citation and conflict rules, uploaded content treated as data). The table schema and a list of documents are placed in the instruction. `ensure_data` builds both `data.db` and `docs.db`. |
 | Tools (`tools.py`) | Changed | Two agent-facing tools: `run_sql` (unchanged) and `search_documents` (new). |
@@ -110,7 +110,7 @@ Objectives:
 
 Policy documents are hierarchical (title → section → sub-section → clause), so chunks follow that structure. This keeps each rule and its conditions together, instead of cutting text into fixed-size windows.
 
-- **Sections first:** the text is split at headings that rule-based checks find: numbered headings (`3`, `3.2`), clause markers (`(a)`), `#` lines, and lines that look like titles. Each section records its full path, for example `3 Escalation > 3.2 Express Shipments`.
+- **Sections first:** the text is split at headings that rule-based checks find: numbered headings (`3`, `3.2`), clause markers (`(a)`), Markdown `#` lines (in `.md` and `.txt` files), and lines that look like titles. Each section records its full path, for example `3 Escalation > 3.2 Express Shipments`.
 - **Then [`semchunk`](https://github.com/isaacus-dev/semchunk):** each section is split into chunks of about 200 tokens. semchunk splits at the most meaningful boundary first (paragraphs, then sentences, then words), so a section that fits stays as one chunk. A chunk never crosses into another section.
 - **Context:** the section path is added to the start of each chunk before it is indexed, so a clause can be found by searching for its parent heading. The stored `text` keeps the original wording.
 - **Fallback:** a document with no detectable headings is chunked by semchunk as a whole, with a small overlap.
@@ -120,7 +120,7 @@ Policy documents are hierarchical (title → section → sub-section → clause)
 | Field | Purpose |
 |---|---|
 | `chunk_id`, `doc_id`, `chunk_index` | A stable reference, and ordering for merging neighbouring chunks |
-| `source` (original filename), `doc_type` (pdf/txt), `doc_title` | Citation and filtering |
+| `source` (original filename), `doc_type` (pdf/txt/md), `doc_title` | Citation and filtering |
 | `section_path` (for example `3 Escalation > 3.2 Express Shipments`), `section_number` (`3.2`, `3.2(b)`), `level` | Citation, filtering and context for the agent |
 | `parent_section` | Lets the tool show which parent section a clause belongs to |
 | `page_start`, `page_end` (PDF only) | Citing the page or page range |
@@ -164,7 +164,7 @@ Policy documents are hierarchical (title → section → sub-section → clause)
 
 | Case | Message, behaviour |
 |---|---|
-| Wrong extension | "Unsupported document type. Upload a .pdf or .txt file." |
+| Wrong extension | "Unsupported document type. Upload a .pdf, .txt or .md file." |
 | More than 1 MB or more than 20 pages | "Document too large (limit 1 MB / 20 pages)." |
 | A fourth document | "Up to 3 documents per session. Remove one first." |
 | Encrypted or corrupt PDF, or non-UTF-8 text | "Could not read the document: \<reason\>." |
@@ -210,6 +210,7 @@ The current `sales.csv` cannot demonstrate hybrid questions. It stays in the rep
 - a scanned or image-only PDF
 - an encrypted PDF
 - an empty `.txt` file
+- a Markdown file with `#`/`##` headings and `(a)` clauses
 - a `.txt` file that contains a prompt-injection line ("Ignore previous instructions and …")
 
 `delay_days` is stored in the data, so delay answers do not depend on today's date.
@@ -265,7 +266,7 @@ The current `sales.csv` cannot demonstrate hybrid questions. It stays in the rep
 - Parent-section expansion: when a clause matches, also return its parent section, or neighbouring clauses, for fuller context.
 - LLM-assisted or layout-based structure detection (font size, bold text) for PDFs whose headings plain-text rules miss.
 - A reranker (cross-encoder or LLM-based) and query rewriting or multi-query retrieval.
-- OCR for scanned PDFs, plus `.docx`, `.md` and `.html` support and table extraction from PDFs.
+- OCR for scanned PDFs, plus `.docx` and `.html` support and table extraction from PDFs.
 - Richer metadata: effective dates and versions, so the newest policy can win when documents conflict.
 - A retrieval and answer evaluation set (recall@k, citation accuracy, groundedness).
 - Citation checking: confirm each cited passage supports its claim.
