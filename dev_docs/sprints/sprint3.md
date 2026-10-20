@@ -89,27 +89,27 @@ Every phase ends with the following:
 
 **Goal:** documents are validated, split into structured chunks, embedded, and written to `docs.db`.
 
-- [ ] **`prepare(name, data)`** returns a `PreparedDoc` (pages, chunks, title) or a `DocError` (a message, the same pattern as `IngestError`). It runs the validation steps from design §4 in order:
+- [x] **`prepare(name, data)`** returns a `PreparedDoc` (pages, chunks, title) or a `DocError` (a message, the same pattern as `IngestError`). It runs the validation steps from design §4 in order:
   - extension
   - size of 1 MB or less
   - `pypdf` can open the file, it is not encrypted, and it has 20 pages or fewer
   - TXT and MD files decode as `utf-8-sig`
   - the extracted text is not empty
-- [ ] **Extract text** page by page and keep a map from character offsets to pages.
-- [ ] **Find headings** with the regular-expression rules (numbered headings, `(a)` clauses, `#` lines, lines that look like titles). Use a stack to build `section_path`, `section_number` and `level`.
-- [ ] **Split each section with `semchunk`:**
+- [x] **Extract text** page by page and keep a map from character offsets to pages.
+- [x] **Find headings** with the regular-expression rules (numbered headings, `(a)` clauses, `#` lines, lines that look like titles). Use a stack to build `section_path`, `section_number` and `level`.
+- [x] **Split each section with `semchunk`:**
   - chunks of 160 words, counted as whitespace-separated words
   - no overlap
   - a chunk never crosses into another section
   - each chunk records `page_start` and `page_end`
-- [ ] **Fallback:** a document with no headings is chunked as a whole with about 15% overlap, and its chunks are tagged `chunk_method = "fallback"`.
-- [ ] **`embed(texts, task_type)`** calls `gemini-embedding-001` with dimension 768 and batches of up to 100. It L2-normalises the vectors and returns `None` on any API error, logging a warning.
-- [ ] **`build(docs, session_dir)`:**
+- [x] **Fallback:** a document with no headings is chunked as a whole with about 15% overlap, and its chunks are tagged `chunk_method = "fallback"`.
+- [x] **`embed(texts, task_type)`** calls `gemini-embedding-001` with dimension 768 and batches of up to 100. It L2-normalises the vectors and returns `None` on any API error, logging a warning.
+- [x] **`build(docs, session_dir)`:**
   - Run `prepare` on each document, skipping failures and collecting their names.
   - Embed each chunk's text with its section path added to the front (`RETRIEVAL_DOCUMENT`).
   - Write `documents`, `chunks` and `chunks_fts` (FTS5, `porter unicode61`) to a temporary file, then `os.replace` it to `docs.db`.
   - Return `docs_db_path`, `docs_summary` and the skipped files.
-- [ ] **Tests** (embeddings mocked):
+- [x] **Tests** (embeddings mocked):
   - each validation error has its message
   - the expected `section_path`, `section_number` and page range for known sections of the sample policy
   - no chunk ends mid-sentence or spans two sections
