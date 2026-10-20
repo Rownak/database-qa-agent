@@ -121,19 +121,19 @@ Every phase ends with the following:
 
 **Goal:** a read-only search tool that returns ranked, citable passages.
 
-- [ ] **`retrieval.search(docs_db_path, query, source, section, top_k, query_vec)`** in `data_agent/retrieval.py`:
+- [x] **`retrieval.search(docs_db_path, query, source, section, top_k, query_vec)`** in `data_agent/retrieval.py`:
   1. Open a `mode=ro` connection.
   2. Apply the filters: `source` must match exactly, and `section` is a `LIKE` match on `section_path`.
   3. BM25: query FTS5 with the query's words, each quoted and joined with `OR`, and take the top 20.
   4. Dense: take the dot product with the stored vectors and keep the top 20. Skip this step if the vectors or `query_vec` are missing.
   5. Fuse the two lists with RRF (k = 60).
-  6. Drop dense-only hits with cosine similarity below `MIN_DENSE_SIM = 0.55`.
+  6. Drop dense hits with cosine similarity below `MIN_DENSE_SIM = 0.62` (tuned in this phase).
   7. Return the top `top_k` chunks.
-- [ ] **Add `search_documents(query, source, section, top_k, tool_context)`** to `tools.py`:
+- [x] **Add `search_documents(query, source, section, top_k, tool_context)`** to `tools.py`:
   - It caps `top_k` at 8 and embeds the query (`RETRIEVAL_QUERY`).
   - It returns `passages` (the fields listed in design §5, with `text` of at most 1,200 characters) and a `note` when there are no matches, a filter excluded everything, or only BM25 was used.
   - It returns an error status when no documents are loaded. It never raises an exception.
-- [ ] **Tests** (with fixed vectors):
+- [x] **Tests** (with fixed vectors):
   - BM25 finds `"Customs Hold"`.
   - Dense search finds a paraphrase.
   - RRF ranks chunks found by both methods first.
@@ -141,7 +141,7 @@ Every phase ends with the following:
   - Missing vectors produce BM25-only results and a note.
   - Punctuation in the query doesn't break FTS5.
   - Search results never include another session's `docs.db`.
-- [ ] **Tune `MIN_DENSE_SIM`** in `dev_test/phase_3_3.py` against the sample documents using real embeddings, and record the value you choose.
+- [x] **Tune `MIN_DENSE_SIM`** in `dev_test/phase_3_3.py` against the sample documents using real embeddings, and record the value you choose.
 
 ## Phase 3.4 — Intent Classification (Pydantic)
 
