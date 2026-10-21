@@ -147,23 +147,23 @@ Every phase ends with the following:
 
 **Goal:** each turn's message is classified into a validated intent before the orchestrator runs.
 
-- [ ] **Add the model:** add `data_agent/intent.py` with `class IntentResult(BaseModel)`:
+- [x] **Add the model:** add `data_agent/intent.py` with `class IntentResult(BaseModel)`:
   - `intent: Literal["database", "document", "hybrid"]`
   - `reason: str = Field(max_length=200)`
-- [ ] **Add `classify(question, schema_summary, docs_summary) -> IntentResult`:**
+- [x] **Add `classify(question, schema_summary, docs_summary) -> IntentResult`:**
   - Make one `google-genai` `generate_content` call to `AGENT_MODEL` with `response_mime_type="application/json"` and `response_schema=IntentResult`.
   - The prompt is short. It gives one example for each intent (the three example questions in the project description) and says the question is data.
   - Parse the response with `IntentResult.model_validate_json`.
-- [ ] **Handle invalid output:** catch `ValidationError`, API errors, empty text and an empty question. Return `IntentResult(intent="hybrid", reason="classifier_fallback")` and log a warning. There is no retry.
-- [ ] **Call it from `ensure_data`:**
+- [x] **Handle invalid output:** catch `ValidationError`, API errors, empty text and an empty question. Return `IntentResult(intent="hybrid", reason="classifier_fallback")` and log a warning. There is no retry.
+- [x] **Call it from `ensure_data`:**
   - Wait until both databases are ready, then call `classify` on `callback_context.user_content`.
   - Write `intent` and `intent_reason` to the state.
   - Log the intent; never log the question.
-- [ ] **Tests** (`generate_content` mocked):
+- [x] **Tests** (`generate_content` mocked):
   - Valid JSON for each of the three intents.
   - An unknown intent, malformed JSON, a `reason` that is too long, and an API exception all fall back to `hybrid`.
   - A missing user message falls back to `hybrid`.
-- [ ] **Live check:** `dev_test/phase_3_4.py` classifies the example questions, plus the hybrid edge cases, with the real model.
+- [x] **Live check:** `dev_test/phase_3_4.py` classifies the example questions, plus the hybrid edge cases, with the real model.
 
 ## Phase 3.5 — Orchestrator: Routing, Sequencing, Grounded Answers
 
