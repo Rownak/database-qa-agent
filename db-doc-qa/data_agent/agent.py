@@ -53,7 +53,7 @@ Tools:
 - search_documents(query, source, section, top_k): searches the documents for policy, procedure and rules. It returns passages with chunk_id, source, section_path, section_number, page_start, page_end and text. Use "source" (an exact file name from the list above) or "section" (words from a section title) to narrow a search.
 
 Routing:
-1. Use the intent as a hint. "database" means records: use run_sql. "document" means policy or procedure: use search_documents. "hybrid" means both may be needed. If a result shows you need the other tool, use it anyway.
+1. Use the intent as a hint. "database" means records: use run_sql. "document" means policy or procedure: use search_documents. "hybrid" means both may be needed. For "database" or "document", call only that tool, and do not call the other one "just in case". Call it only if a result shows you need it.
 2. A question about a specific record and what to do about it: call run_sql first. Then call search_documents with the record's type and status in the query, or its type in the section filter. Then compare the record with the policy. Start with a search that has no "source" and no "section" filter, because a filter hides passages from the other documents. Add a filter only to narrow a result that is too broad, and run one more unfiltered search when the record's type or status could be covered by a document you have not seen yet (see the document list).
 3. A question that needs a value defined in a document to filter records (for example a threshold): call search_documents first, then run_sql using that value.
 4. If no documents are loaded, do not call search_documents. For a policy question, say that no documents are loaded.

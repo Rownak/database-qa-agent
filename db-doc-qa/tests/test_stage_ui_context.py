@@ -36,3 +36,12 @@ def test_stage_replaces_previous_content(tmp_path):
     (out / "old.txt").write_text("x")
     stage_ui_context.stage(out)
     assert not (out / "old.txt").exists()
+
+
+def test_staged_folder_has_the_sample_documents_the_ui_lists_at_start(tmp_path):
+    """The UI reads the sample documents at session start; a missing folder crashed the deployed app."""
+    from data_agent.ingest import SAMPLE_DOCS_DIR
+
+    out = stage_ui_context.stage(tmp_path / "ctx")
+    staged = {p.name for p in (out / "data_agent/sample_data/default/docs").iterdir()}
+    assert staged == {p.name for p in SAMPLE_DOCS_DIR.iterdir()} and len(staged) == 3

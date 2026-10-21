@@ -210,15 +210,15 @@ Every phase ends with the following:
 
 **Goal:** the acceptance criteria for all three intents pass locally and on Cloud Run.
 
-- [ ] Run these checks locally (`uv run streamlit run app.py`), checking the intent shown in the expander and the tool sequence for each:
+- [x] Run these checks locally (`uv run streamlit run app.py`), checking the intent shown in the expander and the tool sequence for each:
   - **Document:** "What is the policy for delayed shipments?" → `document`, using `search_documents` only, with citations.
   - **Database:** "Where is shipment 12345?" → `database`, using `run_sql` only.
   - **Hybrid:** "Shipment 12345 is delayed. What should I do?" → `hybrid`, calling `run_sql` and then `search_documents` (Express), with separate database and document sections and citations.
   - **Hybrid edge cases:** 12348 (the record says on schedule), 99999 (not found), 12349 (no Refrigerated policy) and 12347 (5 versus 7 days, both cited).
   - **Regression:** the v1 questions on an uploaded `sales.csv`. "Delete all rows" is still refused.
   - **Safety:** `injection.txt` is treated as text. A fourth document is rejected. Two browser windows don't see each other's documents.
-- [ ] **Redeploy both services** with the Sprint 2 commands from `db-doc-qa/`. Rerun the checks above on the UI URL.
-- [ ] **Check instance restarts on Cloud Run:** force a new revision and ask a question. Both databases should be rebuilt, and the answer should be the same.
-- [ ] **Check memory:** record the backend's peak memory. Switch to `--memory=1Gi` only if it is above 80% of 512 MiB.
-- [ ] **Update the README:** the new example questions, supported inputs, and the project name. Note the extra LLM call per turn used for intent classification.
-- [ ] Record the results and any limitations in `dev_docs/execution_logs/sprint_3_7.md`. Confirm that `uv run pytest` passes.
+- [x] **Redeploy both services** with the Sprint 2 commands from `db-doc-qa/`. Rerun the checks above on the UI URL.
+- [x] **Check instance restarts on Cloud Run:** force a new revision and ask a question. Both databases should be rebuilt, and the answer should be the same.
+- [x] **Check memory:** record the backend's peak memory. Switch to `--memory=1Gi` only if it is above 80% of 512 MiB.
+- [x] **Update the README:** the new example questions, supported inputs, and the project name. Note the extra LLM call per turn used for intent classification.
+- [x] Record the results and any limitations in `dev_docs/execution_logs/sprint_3_7.md`. Confirm that `uv run pytest` passes.

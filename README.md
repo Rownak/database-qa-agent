@@ -1,21 +1,22 @@
 # database-qa-agent
 
-A demo project for database question answering, built with the **Google Agent Development Kit (ADK)**. You ask questions in plain language about tabular data and get answers grounded in SQL. The current scope is CSV and Excel (`.xlsx`) files.
+A demo project for hybrid database-and-document question answering, built with the **Google Agent Development Kit (ADK)**. You ask questions in plain language about a table of records and about policy documents. Answers from the table are grounded in SQL, and answers from the documents carry citations. The app lives in `db-doc-qa/`.
 
 ## Overview
 
-- Starts every session with a bundled sample dataset (`sales.csv`), so you can ask questions right away.
-- Upload your own CSV or Excel file to replace it. The file is validated first, and invalid files are rejected with a clear message.
-- An ADK agent (`data_analyst`, Gemini model `gemini-3.5-flash-lite`) answers with four read-only tools: table info, sample rows, column statistics, and SQL `SELECT` queries.
-- Answers end with a `Source:` line naming the tool or SQL used. The Streamlit UI also shows the tool calls under **How this was answered**.
-- The agent says when the data can't answer a question (for example, a missing column) instead of guessing.
+- Every session starts with a bundled sample: a table of 60 shipments (`shipments.csv`) and three shipping-policy documents, so you can ask questions right away.
+- Upload your own CSV or Excel (`.xlsx`) file to replace the table, and up to 3 documents (`.pdf`, `.txt` or `.md`) to replace or add to the policies. Files are validated first, and invalid files are rejected with a clear message.
+- One ADK agent (`qa_orchestrator`, Gemini model `gemini-3.5-flash-lite`) has two read-only tools: `run_sql` for records, and `search_documents` for policy (keyword and semantic search over the documents).
+- Before each turn a small structured Gemini call classifies the question as `database`, `document` or `hybrid`. The intent is a routing hint, not a restriction. **This adds one extra LLM call per turn.**
+- Answers are split into **From the database**, **From the documents** (with citations such as `[shipment_delay_policy.pdf, §3.2 Express Shipments, p. 1]`), **Gaps or conflicts**, and a `Sources:` line. The Streamlit UI also shows the intent and every tool call under **How this was answered**.
+- The agent says when the data can't answer a question (a missing record, no matching policy section, documents that disagree) instead of guessing. Text inside uploaded documents is treated as data, never as instructions.
 
 ## Workflow
 
 ```
-data_agent/sample_data/sales.csv ──┐
-                        ├─► validate ─► SQLite table "data" (per session) ─► ADK agent ─► tools / read-only SQL ─► answer + Source
-optional CSV/XLSX upload┘
+shipments.csv or CSV/XLSX upload ──► validate ──► SQLite "data" ───────────────┐
+                                                                                ├─► intent ─► ADK agent ─► run_sql / search_documents ─► cited answer
+sample policies or PDF/TXT/MD upload ─► validate ─► chunk ─► embed ─► docs.db ──┘
 ```
 
 ## Prerequisites and setup
@@ -54,7 +55,7 @@ uv run streamlit run app.py
 uv run adk web
 ```
 
-Select `data_agent` in the ADK Web UI. Uploads are not supported here; each session uses `sales.csv`.
+Select `data_agent` in the ADK Web UI. Uploads are not supported here; each session uses the sample table and sample documents.
 
 **Tests** (no API key needed):
 
@@ -64,14 +65,18 @@ uv run pytest
 
 ## Example questions
 
-With the sample data (`order_id`, `order date`, `category`, `sales_amount`, `revenue`):
+With the sample data (table columns: `shipment_id`, `shipment_type`, `status`, `origin`, `destination`, `current_location`, `ship_date`, `expected_delivery_date`, `last_update_date`, `delivered_date`, `delay_days`):
 
-- How many records are there?
-- What is the average sales amount?
-- Which category has the highest total revenue?
-- Show 5 sample rows.
-- Give me statistics for the revenue column.
-- What is the profit margin? *(explains that cost data is missing)*
+| Question | Intent | Tools |
+|---|---|---|
+| What is the policy for delayed shipments? | document | `search_documents` |
+| Where is shipment 12345? | database | `run_sql` |
+| Shipment 12345 is delayed. What should I do? | hybrid | `run_sql`, then `search_documents` |
+| Which delayed shipments have passed their escalation threshold? | hybrid | `search_documents`, then `run_sql` |
+| Shipment 12349 is delayed. What should I do? | hybrid | no Refrigerated policy: the general rule is used and the gap is stated |
+| Shipment 12347 is late. When do I escalate it? | hybrid | two documents give 5 and 7 days: both are cited as a conflict |
+| Shipment 99999 is delayed. What should I do? | hybrid | record not found: only general guidance, labelled as such |
+| Delete all rows | database | refused (read-only) |
 
 ## Deploy to Cloud Run
 
@@ -92,7 +97,7 @@ After `adk deploy`, the Vertex AI environment variables must be removed (the com
 
 **Behaviour to know**
 - **Cold starts:** with `--min-instances=0` the first request after idle can take about 30 seconds (measurements in [sprint_2_6.md](dev_docs/execution_logs/sprint_2_6.md)).
-- **Backend restarts:** sessions are in memory. If the backend instance is replaced, the UI recreates the session from the upload it still holds, clears the chat and shows a notice.
+- **Backend restarts:** sessions are in memory. If the backend instance is replaced, the UI recreates the session from the table and documents it still holds, clears the chat and shows a notice. The next question rebuilds both databases (including an embedding call for the documents).
 - **Stale browser tab:** a tab left open while the **UI** instance is replaced (a deploy, a crash, the 60-minute websocket limit) keeps a dead Streamlit session, and uploads then fail with `Request failed with status code 400`. Reload the page.
 - **UI against a local API server:** run `uv run adk api_server`, then `API_URL=http://localhost:8000 uv run streamlit run app.py` (PowerShell: set `$env:API_URL` first). Without `API_URL` the UI runs the agent in-process.
 
@@ -103,8 +108,10 @@ After `adk deploy`, the Vertex AI environment variables must be removed (the com
 
 ## Limitations
 
-- **Uploads:** `.csv` and `.xlsx` only, up to 500 KB. The file needs a header row with unique, non-numeric column names. For Excel, only the first sheet is loaded and the other sheets are listed as ignored.
-- **One table:** each session holds a single table. A valid upload replaces the current data and clears the chat. An invalid upload keeps the current data and chat.
+- **Table uploads:** `.csv` and `.xlsx` only, up to 500 KB. The file needs a header row with unique, non-numeric column names. For Excel, only the first sheet is loaded and the other sheets are listed as ignored.
+- **Document uploads:** `.pdf`, `.txt` and `.md`, up to 1 MB and 20 pages each, at most 3 per session. A scanned (image-only) or password-protected PDF is rejected. Adding a file with the name of a loaded document replaces it. Any table or document change starts a new agent session and clears the chat.
+- **One table:** each session holds a single table.
 - **Read-only SQL:** only single `SELECT`/`WITH` queries run, on a read-only connection. Results are capped at 100 rows and 200 characters per cell, and queries stop after about 5 seconds. Requests to change data are refused.
-- **Sessions and cleanup:** data lives in a temp folder (`<system temp>/adk_sheet_qa/<session_id>/`) and is deleted by **End session**, after 30 minutes of inactivity (checked on the next interaction), or when the app restarts. Nothing is persisted. On Cloud Run the backend rebuilds a session's database from the upload held by the UI whenever its instance is replaced.
-- **Answers:** answers are generated by an LLM, so wording and occasionally accuracy can vary. Check the SQL shown with each answer.
+- **Retrieval:** search returns at most 8 passages of at most 1,200 characters. If the embedding service is unavailable, search falls back to keyword matching only, and the tool says so.
+- **Sessions and cleanup:** data lives in a temp folder (`<system temp>/adk_sheet_qa/<session_id>/`, holding `data.db` and `docs.db`) and is deleted by **End session**, after 30 minutes of inactivity (checked on the next interaction), or when the app restarts. Nothing is persisted. On Cloud Run the backend rebuilds both files from the state held by the UI whenever its instance is replaced.
+- **Answers:** answers are generated by an LLM, so wording and occasionally accuracy can vary. Check the SQL and the citations shown with each answer.

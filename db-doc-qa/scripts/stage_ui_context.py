@@ -28,6 +28,8 @@ FILES = [
     "data_agent/doc_ingest.py",
     "data_agent/logs.py",
     "data_agent/sample_data/default/shipments.csv",
+    # The UI lists the sample documents (and counts their chunks) at start, so it needs the files.
+    *sorted(p.relative_to(ROOT).as_posix() for p in (ROOT / "data_agent/sample_data/default/docs").iterdir()),
 ]
 
 
