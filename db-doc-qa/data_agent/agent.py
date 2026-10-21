@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 from google.adk.agents import Agent
 from google.adk.agents.callback_context import CallbackContext
 
-from data_agent import sessions
+from data_agent import intent, sessions
 from data_agent.ingest import IngestError, IngestResult, load_file, load_sample
 from data_agent.logs import get_logger
 from data_agent.tools import (
@@ -88,8 +88,30 @@ def ensure_data(callback_context: CallbackContext) -> None:
         sessions.touch(Path(db_path).parent)
     else:
         _build_session_data(state, session_id)
+    _classify_turn(callback_context)
     _sweep()
     return None
+
+
+def _classify_turn(callback_context: CallbackContext) -> None:
+    """Classifies the current user message and stores ``intent`` / ``intent_reason``.
+
+    Runs after the databases are ready so the classifier sees the schema and document
+    summary. Never raises: :func:`intent.classify` falls back to ``hybrid``.
+
+    Args:
+        callback_context: ADK callback context; ``user_content`` holds the message.
+
+    Side Effects:
+        Updates the state and logs the intent (never the question).
+    """
+    content = getattr(callback_context, "user_content", None)
+    parts = getattr(content, "parts", None) or []
+    question = " ".join(p.text for p in parts if getattr(p, "text", None)) or None
+    state = callback_context.state
+    result = intent.classify(question, state.get("schema_summary"), state.get("docs_summary"))
+    state["intent"], state["intent_reason"] = result.intent, result.reason
+    logger.info("session %s: intent=%s (%s)", callback_context.session.id, result.intent, result.reason)
 
 
 def _build_session_data(state, session_id: str) -> None:

@@ -99,7 +99,8 @@ def test_ensure_data_keeps_preset_state_from_the_streamlit_app(root, loaded):
     }
     ctx = SimpleNamespace(state=dict(state), session=SimpleNamespace(id="other"))
     ensure_data(ctx)
-    assert ctx.state == state and not (root / "other").exists()
+    assert {k: ctx.state[k] for k in state} == state and not (root / "other").exists()
+    assert ctx.state["intent"] == "hybrid"  # no user message in this context: classifier fallback
 
 
 def test_ensure_data_sweeps_stale_folders(root):
