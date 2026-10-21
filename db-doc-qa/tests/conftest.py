@@ -54,3 +54,8 @@ def fake_embed(monkeypatch):
 
     monkeypatch.setattr(doc_ingest, "embed", _embed)
     return calls
+
+
+def end_session_button(at):
+    """The "End session" button of an AppTest run (the document list adds Remove buttons before it)."""
+    return next(b for b in at.button if b.label == "End session")

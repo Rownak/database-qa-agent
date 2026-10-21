@@ -7,7 +7,7 @@ from streamlit.testing.v1 import AppTest
 
 from data_agent import sessions
 from data_agent.ingest import SAMPLE_FILE
-from tests.conftest import DB_SAMPLES
+from tests.conftest import DB_SAMPLES, end_session_button
 
 APP = str(Path(__file__).resolve().parent.parent / "app.py")
 
@@ -28,7 +28,7 @@ def test_first_load_shows_sample_and_creates_folder(at):
 
 def test_end_session_deletes_folder_and_starts_new(at):
     old = at.session_state.session_id
-    at.button[0].click().run()
+    end_session_button(at).click().run()
     assert not (sessions.ROOT / old).exists()
     assert at.session_state.session_id != old
     sessions.end_session(sessions.ROOT / at.session_state.session_id)
@@ -72,6 +72,19 @@ def test_end_session_after_upload_returns_to_sample_not_the_old_file(at):
     f = DB_SAMPLES / "multi_sheet.xlsx"
     at.file_uploader[0].upload(f.name, f.read_bytes()).run()
     assert "multi_sheet.xlsx" in at.subheader[0].value
-    at.button[0].click().run()
+    end_session_button(at).click().run()
     assert "shipments.csv (sample)" in at.subheader[0].value
+    sessions.end_session(sessions.ROOT / at.session_state.session_id)
+
+
+def test_end_session_and_idle_expiry_remove_docs_db_with_the_folder(at):
+    folder = sessions.ROOT / at.session_state.session_id
+    (folder / "docs.db").write_bytes(b"x")
+    end_session_button(at).click().run()
+    assert not folder.exists()
+    second = sessions.ROOT / at.session_state.session_id
+    (second / "docs.db").write_bytes(b"x")
+    at.session_state.last_active -= sessions.MAX_AGE_SECONDS + 1
+    at.run()
+    assert not second.exists()
     sessions.end_session(sessions.ROOT / at.session_state.session_id)

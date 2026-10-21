@@ -1,8 +1,8 @@
 """HTTP client the Streamlit UI uses to talk to the ADK API server (Sprint 2, phase 2.3).
 
 In the deployed setup the agent runs as a separate, private Cloud Run service
-(``data-qa-api``). This module wraps the three ADK endpoints the UI needs: create a
-session, ask a question (``POST /run``) and delete the session. The base URL comes from
+(``data-qa-api``). This module wraps the ADK endpoints the UI needs: create a
+session, ask a question (``POST /run``), read a session's state and delete the session. The base URL comes from
 the ``API_URL`` environment variable; when it is unset the UI runs the agent in-process
 instead and never imports this module's network functions.
 
@@ -137,8 +137,9 @@ def create_session(session_id: str, state: dict) -> None:
     Args:
         session_id: Id for the new session.
         state: Initial state. ADK takes the request body as the state itself, so for an
-            upload this is ``{"upload_name": ..., "upload_b64": ...}``; ``{}`` means
-            "use the sample data".
+            upload this is ``{"upload_name": ..., "upload_b64": ...}``, and changed
+            documents add ``"docs": [{"name": ..., "b64": ...}]``; ``{}`` means "use the
+            sample table and the sample documents".
 
     Raises:
         ApiError: If the backend rejects the request or cannot be reached.
@@ -159,16 +160,17 @@ def delete_session(session_id: str) -> None:
     _request("DELETE", _session_path(session_id), timeout=SESSION_TIMEOUT_S)
 
 
-def ask(session_id: str, question: str) -> tuple[str, list[dict]]:
-    """Sends a question to the agent and returns its answer and the tools it called.
+def ask(session_id: str, question: str) -> tuple[str, list[dict], str | None]:
+    """Sends a question to the agent and returns its answer, tool calls and intent.
 
     Args:
         session_id: Id of an existing backend session.
         question: The user's question.
 
     Returns:
-        ``(answer_text, tool_calls)`` where each call is ``{"name", "args"}``. The
-        answer is empty if the agent produced no text.
+        ``(answer_text, tool_calls, intent)``. See :func:`parse_events`. The answer is
+        empty if the agent produced no text. If the events carry no intent, it is read
+        from the session state; it is ``None`` when that fails too.
 
     Raises:
         SessionNotFound: If the backend has no such session (HTTP 404).
@@ -182,30 +184,99 @@ def ask(session_id: str, question: str) -> tuple[str, list[dict]]:
     }
     resp = _request("POST", "/run", json=body, timeout=RUN_TIMEOUT_S)
     try:
-        return parse_events(resp.json())
+        answer, calls, intent = parse_events(resp.json())
     except ValueError as exc:
         raise ApiError("The service returned an unreadable response.") from exc
+    return answer, calls, intent or get_intent(session_id)
 
 
-def parse_events(events: list[dict]) -> tuple[str, list[dict]]:
-    """Extracts the final answer and the tool calls from ``/run`` events.
+def get_intent(session_id: str) -> str | None:
+    """Reads the classified intent from a backend session's state.
+
+    Used when the ``/run`` events did not include it. Never raises: the intent is only
+    shown to the user, so any failure just means it is not displayed.
 
     Args:
-        events: The JSON list returned by ``POST /run``.
+        session_id: Id of an existing backend session.
 
     Returns:
-        ``(answer_text, tool_calls)``. The answer is the text of the last event that
-        has any (model "thought" parts are skipped).
+        The ``intent`` state value, or ``None`` if it is missing or the call fails.
+    """
+    try:
+        state = _request("GET", _session_path(session_id), timeout=SESSION_TIMEOUT_S).json().get("state")
+        value = (state or {}).get("intent")
+    except (ApiError, ValueError, AttributeError):
+        return None
+    return value if isinstance(value, str) else None
+
+
+def parse_events(events: list[dict]) -> tuple[str, list[dict], str | None]:
+    """Extracts the final answer, the tool calls and the intent from ``/run`` events.
+
+    Args:
+        events: The JSON list returned by ``POST /run`` (or the same events dumped from
+            ADK ``Event`` objects with aliases, in local mode).
+
+    Returns:
+        ``(answer_text, tool_calls, intent)``. The answer is the text of the last event
+        that has any (model "thought" parts are skipped). Each call is
+        ``{"name", "args", "response"}``; ``response`` is the matching
+        ``functionResponse`` payload (matched by id, else by name in call order), or
+        ``None`` if none arrived. ``intent`` is the last ``stateDelta["intent"]``.
     """
     calls: list[dict] = []
+    ids: list[str | None] = []
     answer = ""
+    intent: str | None = None
     for event in events:
+        delta = (event.get("actions") or {}).get("stateDelta") or {}
+        if isinstance(delta.get("intent"), str):
+            intent = delta["intent"]
         parts = (event.get("content") or {}).get("parts") or []
         for part in parts:
             call = part.get("functionCall")
             if call:
-                calls.append({"name": call.get("name", ""), "args": dict(call.get("args") or {})})
+                calls.append({"name": call.get("name", ""), "args": dict(call.get("args") or {}), "response": None})
+                ids.append(call.get("id"))
+            resp = part.get("functionResponse")
+            if resp:
+                _attach_response(calls, ids, resp)
         text = "".join(p.get("text") or "" for p in parts if not p.get("thought"))
         if text:
             answer = text
-    return answer, calls
+    return answer, calls, intent
+
+
+def _attach_response(calls: list[dict], ids: list[str | None], resp: dict) -> None:
+    """Stores a ``functionResponse`` on the call it answers (by id, else the first open call of that name)."""
+    rid, name = resp.get("id"), resp.get("name")
+    for call, cid in zip(calls, ids):
+        if call["response"] is not None:
+            continue
+        if (rid and cid == rid) or (not rid and call["name"] == name):
+            call["response"] = resp.get("response") if resp.get("response") is not None else {}
+            return
+
+
+def format_citation(passage: dict) -> str:
+    """Formats a ``search_documents`` passage like the agent's citations.
+
+    Args:
+        passage: One entry of the tool's ``passages`` list.
+
+    Returns:
+        ``source, §number title, p. N`` (the page only for PDFs; ``pp. a-b`` for a range).
+    """
+    number = passage.get("section_number") or ""
+    title = str(passage.get("section_path") or "").split(" > ")[-1]
+    if number and title.startswith(number):  # headings already begin with their number
+        title = title[len(number):].strip()
+    section = f"§{number} {title}".strip() if number else title
+    start, end = passage.get("page_start"), passage.get("page_end")
+    if start is None:
+        page = ""
+    elif end is None or end == start:
+        page = f"p. {start}"
+    else:
+        page = f"pp. {start}-{end}"
+    return ", ".join(x for x in (passage.get("source"), section, page) if x)

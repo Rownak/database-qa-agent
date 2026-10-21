@@ -114,9 +114,10 @@ def test_ask_posts_run_body_and_parses_events(monkeypatch, sent):
         {"content": {"parts": [{"functionResponse": {"name": "run_sql", "response": {}}}]}},
         {"content": {"parts": [{"text": "hmm", "thought": True}, {"text": "It is 1.\n\nSource: SELECT 1"}]}},
     ])
-    answer, calls = ui_client.ask("s1", "what?")
+    answer, calls, intent = ui_client.ask("s1", "what?")
     assert answer == "It is 1.\n\nSource: SELECT 1"
-    assert calls == [{"name": "run_sql", "args": {"query": "SELECT 1"}}]
+    assert calls == [{"name": "run_sql", "args": {"query": "SELECT 1"}, "response": {}}]
+    assert intent is None  # no stateDelta, and the mocked session read has no state
     req = sent[0]
     assert req["url"] == "http://localhost:8000/run" and req["timeout"][1] == ui_client.RUN_TIMEOUT_S
     assert req["json"] == {
@@ -126,9 +127,9 @@ def test_ask_posts_run_body_and_parses_events(monkeypatch, sent):
 
 
 def test_parse_events_without_text_returns_empty_answer():
-    assert ui_client.parse_events([]) == ("", [])
+    assert ui_client.parse_events([]) == ("", [], None)
     assert ui_client.parse_events([{"content": {"parts": [{"functionCall": {"name": "x"}}]}}]) == (
-        "", [{"name": "x", "args": {}}],
+        "", [{"name": "x", "args": {}, "response": None}], None,
     )
 
 
@@ -162,3 +163,73 @@ def test_session_calls_allow_for_a_cold_backend_start(monkeypatch, sent):
     ui_client.create_session("s1", {})
     ui_client.delete_session("s1")
     assert all(r["timeout"][1] >= 60 for r in sent)
+
+
+# --- Phase 3.6: tool responses, intent, citations ---
+
+
+def _call(name, args=None, id=None):
+    return {"content": {"parts": [{"functionCall": {"name": name, "args": args or {}, **({"id": id} if id else {})}}]}}
+
+
+def _resp(name, response, id=None):
+    return {"content": {"parts": [{"functionResponse": {"name": name, "response": response, **({"id": id} if id else {})}}]}}
+
+
+def test_parse_events_matches_function_responses_by_id():
+    events = [
+        _call("run_sql", {"query": "a"}, "1"), _call("search_documents", {"query": "b"}, "2"),
+        _resp("search_documents", {"status": "success", "passages": []}, "2"),
+        _resp("run_sql", {"rows": [[1]]}, "1"),
+    ]
+    _, calls, _ = ui_client.parse_events(events)
+    assert [(c["name"], c["response"]) for c in calls] == [
+        ("run_sql", {"rows": [[1]]}), ("search_documents", {"status": "success", "passages": []}),
+    ]
+
+
+def test_parse_events_matches_by_name_in_order_without_ids():
+    events = [_call("run_sql", {"query": "a"}), _resp("run_sql", {"n": 1}), _call("run_sql", {"query": "b"}), _resp("run_sql", {"n": 2})]
+    _, calls, _ = ui_client.parse_events(events)
+    assert [c["response"] for c in calls] == [{"n": 1}, {"n": 2}]
+
+
+def test_parse_events_unanswered_call_and_stray_response_are_tolerated():
+    _, calls, _ = ui_client.parse_events([_call("run_sql"), _resp("search_documents", {"x": 1})])
+    assert calls[0]["response"] is None
+
+
+def test_parse_events_takes_the_intent_from_state_delta():
+    events = [{"actions": {"stateDelta": {"intent": "hybrid", "intent_reason": "r"}}}, {"content": {"parts": [{"text": "hi"}]}}]
+    assert ui_client.parse_events(events) == ("hi", [], "hybrid")
+    assert ui_client.parse_events([{"actions": {"stateDelta": {"intent": 5}}}])[2] is None  # not a string
+
+
+def test_ask_reads_the_intent_from_the_session_when_events_lack_it(monkeypatch, sent):
+    monkeypatch.setenv("API_URL", "http://localhost:8000")
+    replies = iter([
+        FakeResponse(payload=[{"content": {"parts": [{"text": "ok"}]}}]),  # POST /run
+        FakeResponse(payload={"state": {"intent": "document"}}),  # GET session
+    ])
+    monkeypatch.setattr(ui_client.requests, "request", lambda method, url, **kw: sent.append({"method": method, "url": url}) or next(replies))
+    assert ui_client.ask("s1", "q") == ("ok", [], "document")
+    assert sent[1]["method"] == "GET" and sent[1]["url"].endswith("/apps/data_agent/users/user/sessions/s1")
+
+
+def test_get_intent_never_raises(monkeypatch, sent):
+    monkeypatch.setenv("API_URL", "http://localhost:8000")
+    sent.response = FakeResponse(404)
+    assert ui_client.get_intent("s1") is None
+    sent.response = FakeResponse(payload=ValueError("bad json"))
+    assert ui_client.get_intent("s1") is None
+    sent.response = FakeResponse(payload={"state": None})
+    assert ui_client.get_intent("s1") is None
+
+
+def test_format_citation():
+    p = {"source": "policy.pdf", "section_number": "3.2", "section_path": "3 Rules > 3.2 Express Shipments", "page_start": 1, "page_end": 2}
+    assert ui_client.format_citation(p) == "policy.pdf, §3.2 Express Shipments, pp. 1-2"
+    assert ui_client.format_citation({**p, "page_end": 1}) == "policy.pdf, §3.2 Express Shipments, p. 1"
+    assert ui_client.format_citation({**p, "page_start": None, "page_end": None}) == "policy.pdf, §3.2 Express Shipments"
+    no_number = {"source": "notes.txt", "section_number": "", "section_path": "Notes", "page_start": None, "page_end": None}
+    assert ui_client.format_citation(no_number) == "notes.txt, Notes"

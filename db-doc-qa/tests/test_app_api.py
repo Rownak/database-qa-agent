@@ -9,7 +9,7 @@ from streamlit.testing.v1 import AppTest
 
 import ui_client
 from data_agent import sessions
-from tests.conftest import DB_SAMPLES
+from tests.conftest import DB_SAMPLES, end_session_button
 
 APP = str(Path(__file__).resolve().parent.parent / "app.py")
 
@@ -35,7 +35,11 @@ class FakeBackend:
         self.asked.append((sid, question))
         if sid not in self.sessions:
             raise ui_client.SessionNotFound("gone")
-        return "There are 50 records.\n\nSource: get_table_info", [{"name": "get_table_info", "args": {}}]
+        return (
+            "There are 60 records.\n\nSources: run_sql",
+            [{"name": "run_sql", "args": {"query": "SELECT COUNT(*) FROM data"}, "response": {"status": "success"}}],
+            "database",
+        )
 
 
 @pytest.fixture
@@ -91,7 +95,8 @@ def test_question_is_answered_through_the_backend(at, backend):
     at.chat_input[0].set_value("How many records?").run()
     assert not at.exception
     assert [m["role"] for m in at.session_state.messages] == ["user", "assistant"]
-    assert "Source:" in at.session_state.messages[1]["content"]
+    assert "Sources:" in at.session_state.messages[1]["content"]
+    assert at.session_state.messages[1]["intent"] == "database"
     assert backend.asked == [(at.session_state.api_sid, "How many records?")]
 
 
@@ -112,7 +117,7 @@ def test_lost_session_is_recreated_from_held_upload_and_question_retried(at, bac
 
 def test_end_session_deletes_backend_session(at, backend):
     sid = at.session_state.api_sid
-    at.button[0].click().run()
+    end_session_button(at).click().run()
     assert sid in backend.deleted and sid not in backend.sessions
 
 
@@ -134,6 +139,6 @@ def test_app_has_no_top_level_adk_import():
 def test_end_session_after_upload_starts_a_sample_session(at, backend):
     f = DB_SAMPLES / "multi_sheet.xlsx"
     at.file_uploader[0].upload(f.name, f.read_bytes()).run()
-    at.button[0].click().run()
+    end_session_button(at).click().run()
     assert "shipments.csv (sample)" in at.subheader[0].value
     assert backend.sessions == {at.session_state.api_sid: {}}  # sample state, no upload

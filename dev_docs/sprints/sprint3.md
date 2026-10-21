@@ -191,17 +191,17 @@ Every phase ends with the following:
 
 **Goal:** users can manage documents, see how each answer was produced, and nothing outlives its session.
 
-- [ ] **Document uploader** in `app.py`:
+- [x] **Document uploader** in `app.py`:
   - One file at a time (`pdf`, `txt`, `md`), validated with `doc_ingest.prepare`.
   - The 3-document limit, and replacing a document that has the same name.
   - A list of documents (name, pages, chunks) with a **Remove** button.
   - Errors are shown with `st.error`, and the session is left unchanged.
-- [ ] **New session on change:** any accepted table or document change creates a new ADK session with `docs: [{name, b64}]` alongside `upload_*`, deletes the old session and its folder, and clears the chat. This uses the existing `_api_new_session` and local-mode paths.
-- [ ] **Recovery after a 404:** recreate the session with the current table and documents.
-- [ ] **Parse tool responses:** `ui_client.parse_events`, and the event loop in local mode, also collect `functionResponse` parts and the `intent` from `stateDelta`. If the intent is not present there, read it from the session state.
-- [ ] **Expander display:** `_render_calls` shows the classified intent and each tool by name: the SQL for `run_sql`, and the query, filters and returned citations for `search_documents`.
-- [ ] **Cleanup:** check that End session, the idle sweep and `purge_all` remove `docs.db` along with the session folder. No new cleanup code is expected.
-- [ ] **Tests:**
+- [x] **New session on change:** any accepted table or document change creates a new ADK session with `docs: [{name, b64}]` alongside `upload_*`, deletes the old session and its folder, and clears the chat. This uses the existing `_api_new_session` and local-mode paths.
+- [x] **Recovery after a 404:** recreate the session with the current table and documents.
+- [x] **Parse tool responses:** `ui_client.parse_events`, and the event loop in local mode, also collect `functionResponse` parts and the `intent` from `stateDelta`. If the intent is not present there, read it from the session state.
+- [x] **Expander display:** `_render_calls` shows the classified intent and each tool by name: the SQL for `run_sql`, and the query, filters and returned citations for `search_documents`.
+- [x] **Cleanup:** check that End session, the idle sweep and `purge_all` remove `docs.db` along with the session folder. No new cleanup code is expected.
+- [x] **Tests:**
   - `AppTest` covers: add, replace and remove a document, the fourth document rejected, a rejected file leaving the state unchanged, and the chat resetting on a change.
   - `ui_client` tests cover parsing `functionResponse` and the intent.
   - Session tests check that the folder with `docs.db` is removed.
