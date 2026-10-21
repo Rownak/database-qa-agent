@@ -118,7 +118,7 @@ def _ctx(text="Where is shipment 12345?"):
 
 
 @pytest.fixture
-def root(tmp_path, monkeypatch):
+def root(tmp_path, monkeypatch, fake_embed):
     monkeypatch.setattr(sessions, "ROOT", tmp_path)
     return tmp_path
 

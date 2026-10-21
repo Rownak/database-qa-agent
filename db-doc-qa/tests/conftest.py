@@ -35,3 +35,22 @@ def ctx(loaded):
 def _local_mode(monkeypatch):
     """Tests run in local (in-process) mode unless they set API_URL themselves."""
     monkeypatch.delenv("API_URL", raising=False)
+
+
+@pytest.fixture
+def fake_embed(monkeypatch):
+    """Replaces ``doc_ingest.embed`` with unit vectors (no network); returns the call log."""
+    import numpy as np
+
+    from data_agent import doc_ingest
+
+    calls = []
+
+    def _embed(texts, task_type):
+        calls.append((len(texts), task_type))
+        vecs = np.zeros((len(texts), doc_ingest.EMBED_DIM), dtype=np.float32)
+        vecs[:, 0] = 1.0
+        return vecs
+
+    monkeypatch.setattr(doc_ingest, "embed", _embed)
+    return calls
