@@ -8,7 +8,7 @@
 - Budget: $10/month, alerts at 50/90/100%
 
 # Deploy and tear down commands
-Run from `spreadsheet-qa/`. One-time project setup is in [phase_2_1_gcp_setup.md](phase_2_1_gcp_setup.md). Replace `<PROJECT_ID>`, `<API_URL>`.
+Run from `db-doc-qa/`. One-time project setup is in [phase_2_1_gcp_setup.md](phase_2_1_gcp_setup.md). Replace `<PROJECT_ID>`, `<API_URL>`.
 
 **1. Backend (`data-qa-api`)**
 ```
@@ -76,3 +76,12 @@ App name is the agent folder: `data_agent`. Interactive docs at `/docs`.
 - Peak memory (99th percentile): backend 45%, UI 53% of 512 MiB. No `--memory=1Gi` change needed.
 - Free-tier usage so far is tiny (about 3,000 billable UI seconds and 355 backend seconds against 180,000 vCPU-seconds).
 - Cost check still to do by hand after a day of use: Console -> Billing -> Reports, grouped by service (Cloud Run, Cloud Build, Artifact Registry, Secret Manager). Budget `data-qa-demo-monthly`: $10, alerts at 50/90/100%.
+
+# Redeployed for Sprint 3 (Phase 3.7, 2026-10-20)
+- Backend `data-qa-api`: revision `data-qa-api-00009-25m` from `adk deploy`, then `00010` after removing the Vertex env vars. Later revisions (`00011`-`00013`) only added or changed the test env var `RESTART_MARK`, to force a new instance. Settings unchanged (1 CPU, 512Mi, max 1 instance).
+- UI `data-qa-ui`: revision `data-qa-ui-00008-7gw`. The first Sprint 3 revision (`00007`) crashed at start because the staged context lacked `data_agent/sample_data/default/docs/`; `scripts/stage_ui_context.py` now stages those files.
+- Session state keys added in Sprint 3: `docs` (list of `{name, b64}`; a missing key means the sample documents, `[]` means none). The backend also sets `docs_db_path`, `docs_summary`, `intent` and `intent_reason`. `load_error` now also lists skipped documents.
+- Tool results: `functionResponse` events carry the tool output. The UI reads the classified intent from `actions.stateDelta.intent` and, if absent, from `GET` on the session (`state.intent`).
+- Memory (99th percentile, Cloud Monitoring, 1.5 h covering the browser runs): backend 46%, UI 42% of 512 MiB. Below the 80% threshold, so no `--memory=1Gi`.
+- `gcloud` from Git Bash: the Cloud SDK path contains a space, so call it as `cmd //c "gcloud ..."` (with `bin` on `PATH`), or put the command in a `.cmd` file when it has quoted arguments.
+- Remove the `RESTART_MARK` test variable when convenient: `gcloud run services update data-qa-api --region us-central1 --remove-env-vars=RESTART_MARK`.

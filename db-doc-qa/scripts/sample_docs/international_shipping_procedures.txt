@@ -1,0 +1,42 @@
+International Shipping Procedures
+
+Document ISP-2025, effective 1 July 2025. Owner: International Trade Desk.
+
+1 Scope
+These procedures apply to all shipments that cross a national border. They cover customs documents, customs holds and delays on international routes.
+
+2 Required Documents
+
+2.1 Documents for every international shipment
+(a) a commercial invoice showing the value and description of the goods;
+(b) a packing list;
+(c) the exporter's and importer's tax or customs identification numbers.
+
+2.2 Additional documents
+(a) Goods of animal or plant origin need a health certificate.
+(b) Goods subject to export control need an export licence number on the invoice.
+
+3 Customs Holds
+
+3.1 What a customs hold means
+A shipment in Customs Hold status has been stopped by the customs authority for inspection, payment of duties or missing documents.
+
+3.2 Handling a customs hold
+(a) On the first day of the hold, check that every document in Section 2 was submitted with the shipment.
+(b) If a document is missing, request it from the sender or the customer within 1 business day.
+(c) If duties are due, tell the customer the amount and how to pay.
+(d) Record the customs reference number in the tracking record.
+
+3.3 Releasing the shipment
+Once customs releases the shipment, the carrier resumes delivery. The expected delivery date is moved by the number of days the shipment was held.
+
+4 International Delays
+
+4.1 Monitoring
+Track international shipments daily. Delays of up to 3 days are common on international routes and are monitored without escalation.
+
+4.2 Escalation threshold
+An international shipment, including one in Customs Hold, is escalated when it is delayed by 7 days or more. The trade desk opens the escalation case and includes the customs reference number.
+
+4.3 Contact for international escalations
+International escalations are sent to the trade desk at trade-desk@example.com.

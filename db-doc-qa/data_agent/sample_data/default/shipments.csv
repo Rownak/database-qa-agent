@@ -1,0 +1,61 @@
+shipment_id,shipment_type,status,origin,destination,current_location,ship_date,expected_delivery_date,last_update_date,delivered_date,delay_days
+12301,Express,Delivered,Chicago,Phoenix,Phoenix,2026-09-24,2026-09-26,2026-09-26,2026-09-26,0
+12302,Standard,Delivered,Phoenix,Chicago,Chicago,2026-09-21,2026-09-26,2026-09-26,2026-09-26,0
+12303,Standard,In Transit,Phoenix,Dallas,Phoenix Hub,2026-10-12,2026-10-17,2026-10-15,,0
+12304,International,In Transit,Denver,London,Denver Hub,2026-10-09,2026-10-19,2026-10-15,,0
+12305,Standard,Delivered,Boston,Chicago,Chicago,2026-09-30,2026-10-05,2026-10-05,2026-10-05,0
+12306,International,Delivered,Memphis,Singapore,Singapore,2026-09-16,2026-09-26,2026-09-28,2026-09-28,2
+12307,Standard,Delivered,Boston,Seattle,Seattle,2026-09-29,2026-10-04,2026-10-04,2026-10-04,0
+12308,Refrigerated,Delivered,Atlanta,Memphis,Memphis,2026-10-05,2026-10-08,2026-10-08,2026-10-08,0
+12309,Standard,Delivered,Atlanta,Phoenix,Phoenix,2026-10-03,2026-10-08,2026-10-10,2026-10-10,2
+12310,Express,In Transit,Atlanta,Dallas,Atlanta Hub,2026-10-14,2026-10-16,2026-10-15,,0
+12311,Express,Delayed,Chicago,Denver,Phoenix Hub,2026-10-07,2026-10-09,2026-10-14,,6
+12312,Standard,In Transit,Boston,Dallas,Boston Hub,2026-10-13,2026-10-18,2026-10-14,,0
+12313,Standard,In Transit,Denver,Dallas,Denver Hub,2026-10-14,2026-10-19,2026-10-14,,0
+12314,International,In Transit,Phoenix,Singapore,Phoenix Hub,2026-10-08,2026-10-18,2026-10-15,,0
+12315,Express,Delivered,Dallas,Memphis,Memphis,2026-09-28,2026-09-30,2026-09-30,2026-09-30,0
+12316,Express,In Transit,Phoenix,Atlanta,Phoenix Hub,2026-10-14,2026-10-16,2026-10-14,,0
+12317,Refrigerated,In Transit,Chicago,Phoenix,Chicago Hub,2026-10-14,2026-10-17,2026-10-14,,0
+12318,Standard,In Transit,Phoenix,Dallas,Phoenix Hub,2026-10-15,2026-10-20,2026-10-14,,0
+12319,Refrigerated,Delayed,Denver,Boston,Atlanta Hub,2026-10-07,2026-10-10,2026-10-15,,5
+12320,Standard,Exception,Denver,Boston,Denver Hub,2026-10-01,2026-10-06,2026-10-15,,9
+12321,Express,Delivered,Memphis,Chicago,Chicago,2026-10-04,2026-10-06,2026-10-06,2026-10-06,0
+12322,Standard,In Transit,Dallas,Chicago,Dallas Hub,2026-10-10,2026-10-15,2026-10-15,,0
+12323,Standard,Delivered,Memphis,Seattle,Seattle,2026-10-02,2026-10-07,2026-10-07,2026-10-07,0
+12324,Refrigerated,Delivered,Atlanta,Phoenix,Phoenix,2026-09-26,2026-09-29,2026-10-01,2026-10-01,2
+12325,International,Delivered,Memphis,Toronto,Toronto,2026-09-15,2026-09-25,2026-09-25,2026-09-25,0
+12326,Express,Delivered,Atlanta,Chicago,Chicago,2026-10-09,2026-10-11,2026-10-11,2026-10-11,0
+12327,Refrigerated,In Transit,Boston,Chicago,Boston Hub,2026-10-14,2026-10-17,2026-10-14,,0
+12328,Standard,Exception,Denver,Phoenix,Denver Hub,2026-10-02,2026-10-07,2026-10-15,,8
+12329,International,Delivered,Phoenix,Mexico City,Mexico City,2026-09-20,2026-09-30,2026-09-30,2026-09-30,0
+12330,Express,In Transit,Chicago,Phoenix,Chicago Hub,2026-10-15,2026-10-17,2026-10-15,,0
+12331,Standard,Delayed,Boston,Memphis,Atlanta Hub,2026-10-06,2026-10-11,2026-10-15,,4
+12332,Express,Delivered,Denver,Seattle,Seattle,2026-09-27,2026-09-29,2026-09-29,2026-09-29,0
+12333,International,In Transit,Dallas,Toronto,Dallas Hub,2026-10-13,2026-10-23,2026-10-15,,0
+12334,Refrigerated,Delivered,Atlanta,Dallas,Dallas,2026-10-09,2026-10-12,2026-10-12,2026-10-12,0
+12335,Standard,Delivered,Chicago,Seattle,Seattle,2026-09-29,2026-10-04,2026-10-05,2026-10-05,1
+12336,Express,Delivered,Memphis,Dallas,Dallas,2026-09-23,2026-09-25,2026-09-25,2026-09-25,0
+12337,International,Delivered,Chicago,London,London,2026-09-17,2026-09-27,2026-09-27,2026-09-27,0
+12338,Refrigerated,Exception,Denver,Chicago,Denver Hub,2026-10-10,2026-10-13,2026-10-15,,2
+12339,Standard,Delayed,Dallas,Phoenix,Dallas Hub,2026-10-03,2026-10-08,2026-10-15,,7
+12340,Express,Delivered,Chicago,Boston,Boston,2026-10-03,2026-10-05,2026-10-05,2026-10-05,0
+12341,Standard,Delivered,Boston,Dallas,Dallas,2026-09-24,2026-09-29,2026-09-29,2026-09-29,0
+12342,Standard,In Transit,Dallas,Chicago,Dallas Hub,2026-10-14,2026-10-19,2026-10-15,,0
+12343,Standard,Delivered,Atlanta,Boston,Boston,2026-10-01,2026-10-06,2026-10-08,2026-10-08,2
+12344,Standard,Delayed,Denver,Seattle,Chicago Hub,2026-10-05,2026-10-10,2026-10-14,,5
+12345,Express,Delayed,Chicago,Boston,Cleveland Sort Facility,2026-10-10,2026-10-12,2026-10-15,,3
+12346,Standard,Delayed,Dallas,Denver,Amarillo Depot,2026-10-09,2026-10-14,2026-10-15,,1
+12347,International,Customs Hold,Seattle,Toronto,Vancouver Customs,2026-09-29,2026-10-09,2026-10-14,,6
+12348,Standard,In Transit,Atlanta,Memphis,Birmingham Depot,2026-10-10,2026-10-15,2026-10-15,,0
+12349,Refrigerated,Delayed,Phoenix,Dallas,El Paso Cold Storage,2026-10-10,2026-10-13,2026-10-15,,2
+12350,Standard,Delivered,Atlanta,Phoenix,Phoenix,2026-09-22,2026-09-27,2026-09-27,2026-09-27,0
+12351,Express,In Transit,Chicago,Dallas,Chicago Hub,2026-10-14,2026-10-16,2026-10-15,,0
+12352,Standard,Exception,Denver,Phoenix,Denver Hub,2026-10-07,2026-10-12,2026-10-14,,3
+12353,Express,Delivered,Phoenix,Seattle,Seattle,2026-09-24,2026-09-26,2026-09-26,2026-09-26,0
+12354,Standard,In Transit,Boston,Seattle,Boston Hub,2026-10-13,2026-10-18,2026-10-15,,0
+12355,Standard,Exception,Boston,Memphis,Boston Hub,2026-10-09,2026-10-14,2026-10-14,,1
+12356,Standard,Delivered,Atlanta,Phoenix,Phoenix,2026-10-04,2026-10-09,2026-10-10,2026-10-10,1
+12357,Refrigerated,Delivered,Atlanta,Memphis,Memphis,2026-09-27,2026-09-30,2026-10-01,2026-10-01,1
+12358,Standard,Exception,Boston,Memphis,Boston Hub,2026-10-06,2026-10-11,2026-10-14,,4
+12359,Standard,Delayed,Dallas,Seattle,Atlanta Hub,2026-10-02,2026-10-07,2026-10-15,,8
+12360,International,Delivered,Memphis,Hamburg,Hamburg,2026-09-26,2026-10-06,2026-10-07,2026-10-07,1
