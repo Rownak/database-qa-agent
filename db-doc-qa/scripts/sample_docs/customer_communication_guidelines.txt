@@ -1,0 +1,46 @@
+Customer Communication Guidelines
+
+Document CCG-2026, effective 1 January 2026. Owner: Customer Service.
+
+1 Purpose
+These guidelines describe when and how customers are told about delayed shipments, what options customers have, and what compensation may be offered.
+
+2 When to Notify Customers
+
+2.1 Delay notice
+(a) Send a delay notice on the first day a shipment is delayed, for every shipment type.
+(b) The notice states the shipment ID, the current location, the new estimated delivery date if known, and a contact for questions.
+(c) Send an update every 2 days until the shipment is delivered or the case is closed.
+
+2.2 Escalated shipments
+When a shipment is escalated under the Shipment Delay Policy, tell the customer that the case has been escalated and when they can expect the next update. Do not share internal tier names or staff contact details.
+
+2.3 Customs holds
+For international shipments in customs, tell the customer that the shipment is held by the customs authority, and list any documents the customer must provide.
+
+3 Customer Options
+
+3.1 Reschedule delivery
+The customer may choose a new delivery date or a different delivery address within the same country at no charge, as long as the shipment has not left the final delivery depot.
+
+3.2 Cancel the shipment
+(a) The customer may cancel a shipment that is delayed by more than 3 days.
+(b) A cancelled shipment is returned to the sender at no charge, and the shipping fee is refunded in full.
+(c) International shipments in Customs Hold cannot be cancelled until customs releases them.
+
+3.3 File a claim
+(a) The customer may file a claim for a lost or damaged shipment, or for costs caused by a delay.
+(b) Claims must be filed within 30 days of the expected delivery date.
+(c) The customer must provide the shipment ID, a description of the loss and supporting evidence such as photos or receipts.
+
+4 Compensation
+
+4.1 Service credit
+(a) Standard and International shipments delayed by more than 5 days receive a service credit of 10 percent of the shipping fee.
+(b) Express shipments follow the express surcharge refund in the Shipment Delay Policy instead of the service credit.
+
+4.2 Force majeure
+No compensation is offered for delays caused by severe weather, strikes or government action, but the customer keeps the right to reschedule or cancel under Section 3.
+
+5 Tone and Content
+Messages must be factual and must not promise a delivery date that the carrier has not confirmed. Apologise once, explain the next step, and give one contact point.

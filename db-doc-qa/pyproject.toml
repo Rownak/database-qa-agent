@@ -1,0 +1,27 @@
+[project]
+name = "db-doc-qa"
+version = "0.1.0"
+description = "Hybrid database-and-document Q&A demo built with Google ADK"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "google-adk>=2.12.0",
+    "google-auth>=2.62.0",
+    "openpyxl>=3.1.5",
+    "pandas>=3.0.6",
+    "pypdf>=6.21.1",
+    "python-dotenv>=1.2.4",
+    "requests>=2.34.2",
+    "semchunk>=4.1.1",
+    "streamlit>=1.66.0",
+]
+
+[dependency-groups]
+dev = [
+    "fpdf2>=2.8.9",
+    "pytest>=9.1.1",
+]
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+filterwarnings = ["ignore::UserWarning"]
