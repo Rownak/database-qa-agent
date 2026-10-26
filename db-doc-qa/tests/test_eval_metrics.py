@@ -1,8 +1,13 @@
 """Tests for evals.metrics: each metric on a passing and a failing TurnResult, and on a case with nothing to compare."""
 
+import importlib.util
+from pathlib import Path
+
+import pytest
+
 from data_agent.events import TurnResult
 from evals.dataset import EvalCase, Expected, ExpectedSection
-from evals.metrics import METRICS
+from evals.metrics import METRICS, final_answer, predicted_object_ids
 
 POLICY = "shipment_delay_policy.pdf"
 
@@ -28,7 +33,10 @@ def result(answer="", calls=()):
 
 
 def test_metrics_registry():
-    assert set(METRICS) == {"tool_sequence_match", "section_recall", "answer_contains", "citation_precision", "mrr"}
+    assert set(METRICS) == {
+        "tool_sequence_match", "section_recall", "answer_contains", "citation_precision", "mrr",
+        "answer_f1", "object_f1", "coverage",
+    }
 
 
 def test_tool_sequence_match():
@@ -78,4 +86,72 @@ def test_citation_precision():
 def test_every_metric_is_none_when_expected_is_empty():
     empty, r = case(), result("answer", [sql()])
     for name in METRICS:
-        assert METRICS[name](empty, r) is None, name
+        if name != "coverage":  # coverage needs no expectation: it only checks that an answer exists
+            assert METRICS[name](empty, r) is None, name
+
+
+def sql_call(query, status="success"):
+    return {"name": "run_sql", "args": {"query": query}, "response": {"status": status}}
+
+
+def test_final_answer_removes_the_sources_line():
+    assert final_answer(result("Yes.\nSources: SELECT 1; chunk_id 3")) == "Yes."
+    assert final_answer(result("Yes. [a.md, §1 T]")) == "Yes. [a.md, §1 T]"
+    assert final_answer(result("")) == ""
+
+
+def test_predicted_object_ids_reads_cited_sources_and_sql_tables():
+    calls = [
+        sql_call('SELECT * FROM "Client" c JOIN "transaction" t ON t.client_id = c.client_id'),
+        sql_call("SELECT * FROM cheque", status="error"),  # a failed query names no table
+        search(passage("Policy-A.md", "5"), passage("policy-b.md", "2")),
+    ]
+    r = result("Yes. [Policy-A.md, §5 Safeguards]", calls)
+    assert predicted_object_ids(r) == ["client", "policy-a", "transaction"]
+    # nothing cited: every returned passage counts
+    assert predicted_object_ids(result("Yes.", calls)) == ["client", "policy-a", "policy-b", "transaction"]
+
+
+def test_answer_f1():
+    c = case(reference_answers=["Yes, approved", "The request is approved for the client"])
+    f = METRICS["answer_f1"]
+    assert f(c, result("Yes, approved")) == 1.0
+    assert f(c, result("Declined")) == 0.0
+    assert 0 < f(c, result("Yes, approved today.\nSources: none")) < 1  # the Sources line is not scored
+    assert f(case(), result("Yes")) is None
+
+
+def test_object_f1():
+    c = case(object_ids=["policy-a", "client"])
+    f = METRICS["object_f1"]
+    assert f(c, result("ok [policy-a.md, §1 T]", [search(passage("policy-a.md", "1")), sql_call("SELECT * FROM client")])) == 1.0
+    assert f(c, result("ok", [sql_call("SELECT * FROM cheque")])) == 0.0
+    assert f(c, result("ok [policy-a.md, §1 T]", [search(passage("policy-a.md", "1"))])) == 2 / 3  # precision 1, recall 0.5
+    assert f(case(), result("ok")) is None
+
+
+def test_coverage():
+    f = METRICS["coverage"]
+    assert f(case(), result("An answer")) == 1.0
+    assert f(case(), result("  \nSources: none")) == 0.0
+    assert f(case(), result("")) == 0.0
+
+
+SCORE_PY = Path(__file__).resolve().parents[2] / "benchmark" / "LakeQuest" / "scoring_program" / "score.py"
+
+
+@pytest.mark.skipif(not SCORE_PY.is_file(), reason="benchmark/LakeQuest/scoring_program/score.py is missing")
+def test_answer_f1_matches_the_official_scorer():
+    spec = importlib.util.spec_from_file_location("lakequest_score", SCORE_PY)
+    official = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(official)
+    pairs = [
+        ("Yes, the transfer is allowed.", "Yes, the transfer is allowed"),
+        ("42", "The balance is 42 USD."),
+        ("Approve the request after identity checks", "Decline"),
+        ("a a b", "a b b c"),
+        ("Mark Johnson (client_id: 748)", ""),
+    ]
+    for ref, pred in pairs:
+        c = case(reference_answers=[ref])
+        assert METRICS["answer_f1"](c, result(pred)) == pytest.approx(official._token_f1(ref, pred))

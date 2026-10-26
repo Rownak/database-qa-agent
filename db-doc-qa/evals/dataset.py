@@ -40,6 +40,8 @@ class Expected(BaseModel):
             called; ``None`` skips the check.
         sections: Sections that should appear among the retrieved passages.
         answer_contains: Strings that should appear in the answer.
+        reference_answers: Reference answers for ``answer_f1`` (the best match counts).
+        object_ids: Gold object ids (policy ids and table names) for ``object_f1``.
     """
 
     model_config = _STRICT
@@ -47,6 +49,8 @@ class Expected(BaseModel):
     tools: list[Literal["run_sql", "search_documents"]] | None = None
     sections: list[ExpectedSection] = Field(default_factory=list)
     answer_contains: list[str] = Field(default_factory=list)
+    reference_answers: list[str] = Field(default_factory=list)
+    object_ids: list[str] = Field(default_factory=list)
 
 
 class EvalCase(BaseModel):

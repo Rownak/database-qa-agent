@@ -11,7 +11,8 @@ from types import SimpleNamespace
 import pytest
 
 from data_agent import doc_ingest, intent, sessions
-from data_agent.agent import AGENT_MODEL, INSTRUCTION, ensure_data, root_agent
+from data_agent.agent import AGENT_MODEL, INSTRUCTION, LAKE_INSTRUCTION, build_agent, ensure_data, root_agent
+from data_agent.config import AgentConfig
 from tests.conftest import DB_SAMPLES, DOC_SAMPLES
 
 
@@ -21,6 +22,21 @@ def test_agent_definition():
     assert [t.__name__ for t in root_agent.tools] == ["run_sql", "search_documents"]
     assert callable(root_agent.before_agent_callback)  # a closure from make_ensure_data(cfg)
     assert "document" in root_agent.description and "database" in root_agent.description
+
+
+def test_default_profile_uses_the_shipments_instruction():
+    assert AgentConfig().profile == "shipments"
+    assert build_agent(AgentConfig()).instruction == INSTRUCTION
+
+
+def test_lakequest_profile_uses_the_lake_instruction():
+    agent = build_agent(AgentConfig(profile="lakequest"))
+    assert agent.instruction == LAKE_INSTRUCTION != INSTRUCTION
+    assert "bank" in agent.description
+    for text in ('"transaction"', 'source set to "<policy_id>.md"', "no \"Sources:\" line", "{schema_summary}", "{docs_summary}"):
+        assert text in LAKE_INSTRUCTION
+    stripped = LAKE_INSTRUCTION.replace("{schema_summary}", "").replace("{docs_summary}", "").replace("{load_error?}", "")
+    assert "{" not in stripped and "}" not in stripped  # ADK would treat any other brace as a state key
 
 
 PLACEHOLDERS = ("{schema_summary}", "{docs_summary}", "{intent?}", "{load_error?}")
