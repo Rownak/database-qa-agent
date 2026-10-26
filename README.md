@@ -103,6 +103,8 @@ With the sample data (table columns: `shipment_id`, `shipment_type`, `status`, `
 
 ## LakeQuest evaluation
 
+**Dataset.** [LakeQuest](https://arxiv.org/pdf/2607.12310) (Retail Bank subset) is a benchmark of questions over a bank's structured data (client, account, transaction and cheque tables) and its unstructured policy documents. Its questions cover three kinds of evidence: database only, document only, and hybrid. Single-source questions look up an isolated fact (an account detail or a policy limit); hybrid questions combine a policy rule with a client's transaction records. In the benchmark, questions can be split by their evidence pointers (table only, policy only, or both); `bank_sample` uses the same three types, built from the public snapshot (hybrid questions from its question table, table and document questions from templates).
+
 An internal evaluation on the LakeQuest **bank** lake. `bank_sample` has 40 cases (20 hybrid, 10 table, 10 document) generated from the public snapshot, so no Codabench files are needed. Scores are for internal comparison only, not leaderboard results. Get the data first (the `benchmark/` folder is git-ignored, so nothing from it is committed):
 
 ```bash
