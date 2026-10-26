@@ -18,8 +18,8 @@ Every phase ends with the following (CLAUDE.md):
 |---|---|
 | 4.1 | Config models, wired into ingestion, retrieval and intent |
 | 4.2 | Shared events, agent factory and runner; the app uses them |
-| 4.3 | Evaluation: dataset, metrics, runner, saved results |
-| 4.4 | Retrieval-only mode, end-to-end verification, redeploy |
+| 4.3 | Evaluation: dataset, 4 metrics, runner, saved results |
+| 4.4 | Retrieval-only mode, local verification, docs |
 
 **Rules for all phases**
 
@@ -78,26 +78,32 @@ Every phase ends with the following (CLAUDE.md):
 
 ## Phase 4.3 — Evaluation
 
-**Goal:** `uv run python -m evals <config.yaml> [key=value ...]` loads a dataset, runs the agent, scores it and saves everything under `runs/`.
+**Goal:** `uv run python -m evals <config.yaml> [key=value ...]` loads a dataset, runs the agent on every case, scores it with four metrics and saves the results with the resolved config under `runs/` (design §5).
 
-- [ ] **`evals/dataset.py`:** `ExpectedSection`, `Expected`, `EvalCase`, `EvalDataset` (design §5.1); unique case ids; a loader that resolves paths relative to `db-doc-qa/`.
-- [ ] **`evals/datasets/shipments_v1.yaml`:** 6–8 cases on the sample data, including `db_location` (12345), `doc_express_threshold`, `hybrid_delayed_express`, `conflict_international` (12347: 5 vs 7 days), `no_policy_refrigerated` (12349) and `refuse_write`.
-- [ ] **`evals/metrics.py`:** pure functions `fn(case, result) -> float | None` (`None` when `expected` has no value for it), stored in one dict `METRICS`: `intent_accuracy`, `tool_sequence_match`, `section_recall`, `citation_precision`, `answer_contains`, `answer_excludes`, `sources_line`; and the diagnostics `tool_calls` and `sql_error_rate`. `section_recall` and `citation_precision` use the passages in the `search_documents` responses of `TurnResult.calls`.
-- [ ] **`evals/report.py`:** `write_run(run_dir, cfg, rows, metrics, meta)` writes `config.yaml` (the resolved config), `meta.json`, `results.jsonl`, `metrics.json` and `summary.md`. `meta.json` holds the git commit and dirty flag, package versions, the dataset name, version and SHA-256, the times and the CLI overrides.
-- [ ] **`evals/run.py`:** `run_eval(cfg, run_dir, session_factory=AgentSession) -> dict`:
-  1. write `config.yaml` and `meta.json` first
-  2. for each case and repeat, open a session (`files_state` from the dataset), `ask`, and close it; a failure becomes `error` and the run goes on
-  3. score each row, then aggregate the mean per metric (overall and per `expected.intent`), `n`, the error count, and p50/p95 latency
-  4. call `write_run`; return the metrics
-- [ ] **`evals/__main__.py`:** parse the arguments, call `load_config`, create `runs/<timestamp>_<name>/`, run, and print the summary. Exit non-zero when a `eval.fail_under` threshold is missed.
-- [ ] **Housekeeping:** add `runs/` to `.gitignore`.
-- [ ] **Tests** (no network; `session_factory` is a fake that returns canned `TurnResult`s):
-  - `tests/test_eval_dataset.py`: the shipped dataset loads; a duplicate id and an unknown tool name are rejected
-  - `tests/test_eval_metrics.py`: each metric on one hand-made passing and one failing `TurnResult`; `None` when `expected` is empty
-  - `tests/test_eval_run.py`: a full run with the fake session writes all five files; `config.yaml` reloads into an equal `RunConfig` (with the override applied); `metrics.json` has the expected means; a case that raises is counted in `errors`; a missed `fail_under` gives a non-zero exit
-- [ ] **Dev script** `phase_4_3.py`: `run_eval` with `limit: 2` on the live agent; print `metrics.json` and the run folder.
+- [x] **`evals/dataset.py`:** `ExpectedSection`, `Expected` (`tools`, `sections`, `answer_contains`), `EvalCase`, `EvalDataset` (design §5.1); unique case ids; a loader that resolves paths relative to `db-doc-qa/`.
+- [x] **`evals/datasets/shipments_v1.yaml`:** 5–6 cases on the sample data: `db_location` (12345), `doc_express_threshold`, `hybrid_delayed_express`, `conflict_international` (12347: 5 vs 7 days), `refuse_write`, and optionally `no_policy_refrigerated` (12349).
+- [x] **`evals/metrics.py`:** one dict `METRICS = {name: fn(case, result) -> float | None}`, where `None` means the case has nothing to compare:
+  - `tool_sequence_match`
+  - `section_recall`
+  - `answer_contains`
+  - `citation_precision`
 
-## Phase 4.4 — Retrieval Mode, Verification and Redeploy
+  `section_recall` and `citation_precision` read the passages from the `search_documents` responses in `TurnResult.calls`.
+- [x] **`evals/report.py`:** `write_run(run_dir, cfg, rows, metrics)` writes `config.yaml` (the resolved config), `results.jsonl` and `metrics.json` (design §5.4).
+- [x] **`evals/run.py`:** `run_eval(cfg, run_dir, session_factory=AgentSession) -> dict`:
+  1. write `config.yaml` first
+  2. for each case, open a session (`files_state` from the dataset), `ask`, and `close`; a failure becomes `error` and the run goes on
+  3. score each row; aggregate the mean per metric (skipping `None`), `n`, the error count and p50/p95 latency
+  4. call `write_run`; return the aggregates
+- [x] **`evals/__main__.py`:** parse the arguments, call `load_config`, create `runs/<timestamp>_<name>/`, call `run_eval`, and print the aggregates.
+- [x] **Housekeeping:** add `runs/` to `.gitignore`.
+- [x] **Tests** (no network; `session_factory` returns canned `TurnResult`s):
+  - `tests/test_eval_dataset.py`: the shipped dataset loads; a duplicate id is rejected
+  - `tests/test_eval_metrics.py`: each metric on one passing and one failing `TurnResult`, and `None` when `expected` has no value for it
+  - `tests/test_eval_run.py`: a full run with the fake session writes the three files; the saved `config.yaml` has the override applied; `metrics.json` has the expected means; a case that raises is counted in `errors`
+- [x] **Dev script** `phase_4_3.py`: `run_eval` with `dataset.limit=2` on the live agent; print `metrics.json` and the run folder.
+
+## Phase 4.4 — Retrieval Mode and Verification
 
 **Goal:** a cheap no-LLM mode for tuning retrieval, and proof that the app still behaves as before.
 
@@ -106,7 +112,6 @@ Every phase ends with the following (CLAUDE.md):
 - [ ] **Tests:** with `fake_embed` and the sample documents, `mrr` and `section_recall` are 1.0 for a query that matches `3.2 Express Shipments` and drop when the expected section is `9.9`; `bm25_only.yaml` loads.
 - [ ] **Compare a real run:** run `smoke.yaml` and `bm25_only.yaml`; note the metrics and the cost of each in the execution log.
 - [ ] **Regression check of the app (no config change):** run `uv run streamlit run app.py` locally, and ask the design_v2 §8 questions (12345 hybrid, 12348, 99999, 12349, 12347, injection, "delete all rows"); the answers must keep their structure.
-- [ ] **Redeploy** the backend (`adk deploy cloud_run`, then remove the Vertex variables, as in `dev_docs/deploy/deploy.md`) and the UI (`stage_ui_context.py` then `gcloud run deploy`). Repeat the checks against Cloud Run.
 - [ ] **Docs:** update `README.md` (new folders, `DATA_AGENT_CONFIG`, how to run an evaluation) and the module docstrings that mention constants that moved.
 - [ ] **Dev script** `phase_4_4.py`: run the retrieval-mode evaluation with `bm25_only.yaml` and print the metrics.
 

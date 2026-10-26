@@ -94,11 +94,7 @@ class DatasetConfig(BaseModel):
     limit: int | None = None
 
 class EvalConfig(BaseModel):
-    mode: Literal["agent", "retrieval"] = "agent"
-    metrics: list[MetricName] = ALL_METRICS
-    repeats: int = Field(1, ge=1, le=5)
     output_dir: Path = Path("runs")
-    fail_under: dict[MetricName, float] = {}
 
 class RunConfig(BaseModel):              # one YAML file = one RunConfig
     name: str
@@ -154,6 +150,8 @@ def files_state(table: Path | None, docs: list[Path] | None) -> dict:
 
 ## 5. Evaluation Workflow
 
+The first version is deliberately small: one mode (the full agent), four metrics, three output files. More metrics, a retrieval-only mode and a benchmark dataset are added later (§8) without changing this workflow.
+
 ### 5.1 Dataset (`evals/dataset.py`)
 
 ```python
@@ -162,11 +160,9 @@ class ExpectedSection(BaseModel):
     section: str              # matches section_number exactly or as a prefix ("3.2" ⊇ "3.2(a)-(c)")
 
 class Expected(BaseModel):    # every field is optional; a metric whose field is missing is skipped
-    intent: Literal["database", "document", "hybrid"] | None = None
     tools: list[Literal["run_sql", "search_documents"]] | None = None  # distinct, in first-call order
     sections: list[ExpectedSection] = []
     answer_contains: list[str] = []
-    answer_excludes: list[str] = []
 
 class EvalCase(BaseModel):
     id: str
@@ -182,46 +178,35 @@ class EvalDataset(BaseModel):
     cases: list[EvalCase]                 # ids must be unique (validator)
 ```
 
-Paths are resolved relative to `db-doc-qa/`. All cases in a dataset share one table and one document set. Per-case files and multi-turn cases are left out until a case needs them.
+Paths are resolved relative to `db-doc-qa/`. All cases share one table and one document set. A later benchmark dataset is another file of the same shape.
 
 ### 5.2 Run Steps (`evals/run.py: run_eval(cfg, run_dir) -> dict`)
 
-1. **Resolve:** `load_config` → `RunConfig`, load and filter the dataset, create `runs/<YYYYmmdd-HHMMSS>_<name>/`, and write `config.yaml` (the **resolved** config, after overrides) and `meta.json` **before** running. That way a crashed run still records what it was.
-2. **Execute** cases sequentially (the API quota is small):
-   - `mode: agent`: `AgentSession(cfg.agent, files_state(...)).ask(case.question)` → `TurnResult`.
-   - `mode: retrieval`: build `docs.db` once with `doc_ingest.build(..., chunking, embedding)`, then call `retrieval.search(question, top_k=max_top_k, cfg=cfg.agent.retrieval)` for each case that has `expected.sections`. This mode needs no LLM, costs one embedding call per question, and is used to tune chunking and retrieval.
-   - A failure in one case is stored in `TurnResult.error`, and the run continues.
-3. **Score** each case with the pure functions in `metrics.py`. A function returns `None` when it does not apply.
-4. **Aggregate:** the mean of each metric over the cases where it applies, overall and per `expected.intent`, plus `n`, the error count, and p50/p95 latency.
-5. **Save** with `report.write_run` (§5.4). The process exits non-zero if any `eval.fail_under` threshold is missed, so the run can gate CI later.
+1. **Resolve:** `load_config` → `RunConfig`, load the dataset (optionally cut by `dataset.case_ids` / `limit`), create `runs/<YYYYmmdd-HHMMSS>_<name>/`, and write `config.yaml` (the **resolved** config, after overrides) **before** running, so a crashed run still records what it was.
+2. **Execute** the cases one after another (the API quota is small). For each case: `AgentSession(cfg.agent, files_state(...)).ask(case.question)` → `TurnResult`, then `close()`, so no history leaks between cases. A failure is stored in `TurnResult.error` and the run continues.
+3. **Score** each case with the functions in `metrics.py`. A function returns `None` when the case has nothing to compare, and that case is left out of that metric's average.
+4. **Aggregate and save** (§5.4): the mean of each metric, the number of cases, the error count and the p50/p95 latency. The function returns the aggregates.
 
 ### 5.3 Metrics
 
-| Metric | Mode | Definition (per case, 0–1) |
+| Metric | Per-case score (0–1) | What it checks |
 |---|---|---|
-| `intent_accuracy` | agent | `TurnResult.intent == expected.intent` |
-| `tool_sequence_match` | agent | The distinct tool names in first-call order equal `expected.tools`. This checks routing and hybrid ordering; `[]` means that no tool should be called |
-| `section_recall` | both | Share of `expected.sections` found among the passages returned in this turn (agent mode) or in the top-k results (retrieval mode) |
-| `mrr` | retrieval | `1/rank` of the first expected section in the fused ranking |
-| `citation_precision` | agent | Share of inline citations `[source, §number …]` in the answer whose `(source, number)` appears among the passages returned **in this turn**. This is a deterministic grounding check |
-| `answer_contains` | agent | Share of the `answer_contains` strings present in the answer (case-insensitive, whitespace-normalised) |
-| `answer_excludes` | agent | 1 if none of the `answer_excludes` strings is present (injection and invented-value checks) |
-| `sources_line` | agent | The answer ends with a `Sources:` line, as the instruction requires |
-| `sql_error_rate`, `latency_s`, `tool_calls` | agent | Diagnostics, reported but not given thresholds |
+| `tool_sequence_match` | The distinct tool names in first-call order equal `expected.tools` (`[]` = no tool should be called) | Routing and hybrid ordering: records only, policy only, SQL then search, or a refusal |
+| `section_recall` | Share of `expected.sections` found among the passages returned by `search_documents` in this turn | Retrieval quality |
+| `answer_contains` | Share of the `answer_contains` strings found in the answer (case-insensitive, whitespace-normalised) | The key fact is in the answer |
+| `citation_precision` | Share of inline citations `[source, §number …]` in the answer whose `(source, number)` was among the passages returned in this turn | Grounding: no invented sources. It needs no expected values |
 
-LLM-as-judge metrics (groundedness, helpfulness) are left out because they are non-deterministic and cost an extra call. `metrics.py` is a dictionary of `name → fn(case, result)`, so a judge metric can be added as one more function later.
+Latency and the error count are reported as diagnostics and have no score or threshold. `metrics.py` is one dictionary, `METRICS = {name: fn(case, result)}`. A new metric is one new function and one entry, with no change to the runner or the output files. Planned additions: `intent_accuracy`, `answer_excludes` (injection and invented-value cases), `sources_line`, `mrr`, and LLM-judge metrics.
 
 ### 5.4 Saved Results (`runs/<timestamp>_<name>/`)
 
 | File | Content |
 |---|---|
 | `config.yaml` | The resolved `RunConfig` (`model_dump(mode="json")`). Rerunning it reproduces the run |
-| `meta.json` | Git commit and dirty flag, Python and `google-adk` / `google-genai` versions, dataset name, version and SHA-256, start and end time, the CLI overrides |
-| `results.jsonl` | One line per case and repeat: `id`, `tags`, `question`, `answer`, `intent`, `calls` (response text cut to 300 characters), per-case metrics, `latency_s`, `error` |
-| `metrics.json` | The aggregates from step 4 |
-| `summary.md` | A metric table and the failing case ids, for a quick read |
+| `results.jsonl` | One line per case: `id`, `tags`, `question`, `answer`, `intent`, `calls` (response text cut to 300 characters), per-case scores, `latency_s`, `error` |
+| `metrics.json` | The aggregates from step 4, plus `run_name`, dataset name and version, git commit and start time |
 
-`runs/` is added to `.gitignore`. Logs keep today's rule: no document text or questions in logs. The questions are stored in `results.jsonl` because they come from the dataset, not from users.
+`runs/` is added to `.gitignore`. Logs keep today's rule: no document text or questions in logs. The questions are stored in `results.jsonl` because they come from the dataset, not from users. The runner prints the aggregates to the terminal when it finishes.
 
 ## 6. Example YAML
 
@@ -232,25 +217,24 @@ name: smoke
 agent:
   model:
     agent: gemini-3.5-flash-lite
-    intent: null              # same as agent
     temperature: 0.0          # lower variance for evaluation; the app keeps the model default
-  intent_enabled: true
   retrieval:
     mode: hybrid              # hybrid | bm25 | dense
     min_dense_sim: 0.62
-    max_top_k: 8
-  # embedding and chunking are omitted, so the code defaults apply
 dataset:
   path: evals/datasets/shipments_v1.yaml
-eval:
-  mode: agent
-  repeats: 1
-  fail_under:
-    intent_accuracy: 0.8
-    tool_sequence_match: 0.8
+  limit: null                 # set a number for a quick run
+# Omitted keys use the code defaults (§3.1): embedding, chunking, other retrieval values,
+# and eval.output_dir (runs/). Only settings worth recording in the run are listed.
 ```
 
-`evals/datasets/shipments_v1.yaml` (excerpt, based on the sample data and the end-to-end checklist in design_v2 §8):
+`evals/datasets/shipments_v1.yaml` (excerpt, based on the sample data and the end-to-end checklist in design_v2 §8). A case lists only what it can be checked against, and each metric skips the cases where its field is missing (§5.3). `citation_precision` needs no expected value, so it scores every case in which the answer has citations:
+
+| Case | Metrics that apply |
+|---|---|
+| `db_location` | `tool_sequence_match`, `answer_contains` |
+| `doc_express_threshold`, `hybrid_delayed_express`, `conflict_international` | all four |
+| `refuse_write` | `tool_sequence_match` (`[]` = no tool called), `answer_contains` |
 
 ```yaml
 name: shipments_v1
@@ -260,18 +244,16 @@ docs: null       # bundled sample documents
 cases:
   - id: db_location
     question: Where is shipment 12345?
-    expected: {intent: database, tools: [run_sql], answer_contains: [Cleveland Sort Facility]}
+    expected: {tools: [run_sql], answer_contains: [Cleveland Sort Facility]}
   - id: doc_express_threshold
     question: What is the escalation threshold for express shipments?
     expected:
-      intent: document
       tools: [search_documents]
       sections: [{source: shipment_delay_policy.pdf, section: "3.2"}]
       answer_contains: ["2 days"]
   - id: hybrid_delayed_express
     question: Shipment 12345 is delayed. What should I do?
     expected:
-      intent: hybrid
       tools: [run_sql, search_documents]
       sections: [{source: shipment_delay_policy.pdf, section: "3.2"}]
       answer_contains: [Tier 2]
@@ -279,7 +261,6 @@ cases:
     question: When must shipment 12347 be escalated?
     tags: [conflict]
     expected:
-      intent: hybrid
       tools: [run_sql, search_documents]
       sections:
         - {source: shipment_delay_policy.pdf, section: "3.3"}
@@ -291,7 +272,14 @@ cases:
     expected: {tools: [], answer_contains: [read-only]}
 ```
 
-Run it: `uv run python -m evals configs/eval/smoke.yaml agent.retrieval.mode=bm25 name=smoke_bm25` (from `db-doc-qa/`).
+Run it from `db-doc-qa/`:
+
+```
+uv run python -m evals configs/eval/smoke.yaml
+uv run python -m evals configs/eval/smoke.yaml agent.retrieval.mode=bm25 name=smoke_bm25 dataset.limit=3
+```
+
+The second command compares retrieval modes without a new file: the overrides are applied before `config.yaml` is saved, so the run folder records `bm25`.
 
 ## 7. Migration Plan
 
@@ -303,9 +291,9 @@ Each step can be released on its own, keeps the app and both Cloud Run services 
 | **2. Events** | Move `parse_events` into `data_agent/events.py` and return `TurnResult`. `ui_client` re-exports it. Add `events.py` and `config.py` to `Dockerfile.ui`, `stage_ui_context.FILES` and `requirements-ui.txt` (pydantic) | `app.py` reads the same fields. The existing `test_ui_client` parsing tests move unchanged | `test_events.py`; `test_stage_ui_context` stays green |
 | **3. Agent factory** | Add `build_agent(cfg)` and `make_ensure_data(cfg)`. Write `state["agent_config"]`; tools read from it. `root_agent = build_agent(load_agent_config())` | Without `DATA_AGENT_CONFIG`, the agent is built with the same model, instruction and tools. Redeploy and run the design_v2 §8 end-to-end checklist | `test_agent.py`: a non-default config changes the model, `max_top_k` and the retrieval mode. A missing `agent_config` uses the defaults |
 | **4. Shared runner** | Add `data_agent/runner.py` (`AgentSession`, `files_state`). Point `app.py` local mode at it and delete the duplicated Runner code | The local and API UI flows behave the same. The `test_app*` suites pass unchanged | `test_runner.py`: state from files, case isolation, and `close` cleanup, using the existing fakes (`fake_embed`, mocked model) |
-| **5. Evaluation** | Add `evals/` (dataset, metrics, run, report, CLI), `configs/eval/smoke.yaml`, `evals/datasets/shipments_v1.yaml`, and `runs/` in `.gitignore` | No production code changes | `test_eval_metrics.py` (each metric on hand-made `TurnResult`s), `test_eval_dataset.py` (validation), `test_eval_run.py` (a full run with a fake `AgentSession`, which checks every output file and `fail_under`). The dev script runs the live smoke evaluation |
+| **5. Evaluation** | Add `evals/` (dataset, metrics, run, report, CLI), `configs/eval/smoke.yaml`, `evals/datasets/shipments_v1.yaml`, and `runs/` in `.gitignore` | No production code changes | `test_eval_metrics.py` (each metric on hand-made `TurnResult`s), `test_eval_dataset.py` (validation), `test_eval_run.py` (a full run with a fake `AgentSession`, which checks the three output files and the averages). The dev script runs the live smoke evaluation |
 
-Steps 1–2 can be merged into one phase if preferred. Step 5's retrieval mode can follow in a separate phase, after agent mode.
+Steps 1–2 can be merged into one phase if preferred.
 
 ## 8. Extension Points (Not Integrated Yet)
 
@@ -316,22 +304,24 @@ Steps 1–2 can be merged into one phase if preferred. Step 5's retrieval mode c
 - Rule until then: no `${...}` interpolation and no `defaults:` lists in YAML, so the current loader and Hydra read the files the same way.
 
 **MLflow**
-- `report.write_run(run_dir, cfg, results, metrics, meta)` is the only place results leave the runner.
+- `report.write_run(run_dir, cfg, rows, metrics)` is the only place results leave the runner.
 - An MLflow sink becomes a second function called next to it, selected by a future `eval.tracker: Literal["files", "mlflow"]` (only `"files"` exists now). It maps:
   - the flattened `config.yaml` → `log_params` (dotted keys)
   - `metrics.json` → `log_metrics`
-  - `meta.json` → tags (commit, dataset hash)
+  - `run_name`, dataset name and version, and commit (in `metrics.json`) → tags
   - the run folder → `log_artifacts`
   - `results.jsonl` → optionally `log_table`
 - Per-turn tracing (MLflow GenAI or ADK tracing) can be attached inside `AgentSession.ask_async` without changing callers.
 
 **Other**
-- `TurnResult` is shared by both modes, so a later `eval.target: api` could evaluate the deployed service through `ui_client`. It is not included now, because the deployed config cannot be controlled from YAML and the recorded config would be wrong.
-- An LLM-judge metric would be one more function in `metrics.py` (§5.3).
+- `TurnResult` is shared by the app's local and API modes, so a later `eval.target: api` could evaluate the deployed service through `ui_client`. It is not included now, because the deployed config cannot be controlled from YAML and the recorded config would be wrong.
+- **More metrics:** each one is one function in `metrics.py` (§5.3). A metric that needs new expected values adds an optional field to `Expected`.
+- **Retrieval-only mode:** build `docs.db` once and call `retrieval.search` per case, with `section_recall` and `mrr`. It needs no LLM, and `run_eval` gains a second loop.
+- **Benchmark dataset:** another file of the §5.1 shape, selected with `dataset.path`. Repeats and a `fail_under` gate can be added to `EvalConfig` once the variance is known.
 
 ## 9. Risks and Open Points
 
-- **The evaluation is not deterministic:** Gemini output varies even at `temperature: 0`. Use `repeats` for important comparisons, and treat `fail_under` as a soft gate until a baseline variance is measured.
+- **The evaluation is not deterministic:** Gemini output varies even at `temperature: 0`. With a small dataset, compare two runs by their per-case rows in `results.jsonl`, not only by the averages.
 - **Cost per case:** each agent-mode case rebuilds `docs.db` (one embedding batch) plus 2–4 model calls. This is fine for about 20–50 cases. If it becomes a problem, pre-build the databases once and pass `docs_db_path` / `docs_summary` in the state, which `ensure_data` already accepts without rebuilding.
 - **Changing the agent config in the app:** only through `DATA_AGENT_CONFIG` on the server or locally. The UI gets no config controls in this design.
 - **To confirm:** whether `temperature: 0.0` should also become the app default (this design keeps today's model default to preserve behaviour), and the sprint numbering for the steps in §7.

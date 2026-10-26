@@ -226,3 +226,6 @@ __marimo__/
 
 # benchmark
 benchmark/
+
+# Evaluation outputs (python -m evals)
+db-doc-qa/runs/
