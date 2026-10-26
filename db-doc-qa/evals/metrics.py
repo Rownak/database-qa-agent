@@ -108,13 +108,18 @@ def citation_precision(case: EvalCase, result: TurnResult) -> float | None:
     return sum(_has_passage(passages, src, num) for src, num in cited) / len(cited)
 
 
+def strip_sources(answer: str | None) -> str:
+    """``answer`` without a trailing ``Sources:`` line (the shipments format), stripped."""
+    return _SOURCES_RE.sub("", answer or "").strip()
+
+
 def final_answer(result: TurnResult) -> str:
     """The answer without a trailing ``Sources:`` line (the shipments format), stripped.
 
     The LakeQuest profile asks for no such line; this guards against the model writing
     one anyway, so the text scored here equals the text written to ``predictions.jsonl``.
     """
-    return _SOURCES_RE.sub("", result.answer or "").strip()
+    return strip_sources(result.answer)
 
 
 def predicted_object_ids(result: TurnResult) -> list[str]:

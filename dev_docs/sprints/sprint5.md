@@ -125,20 +125,20 @@ Every phase ends with the following (CLAUDE.md):
 
 **Goal:** `run_eval` runs a prebuilt bundle without rebuilding or deleting it, and writes `predictions.jsonl`.
 
-- [ ] **Runner** (`evals/run.py`):
+- [x] **Runner** (`evals/run.py`):
   - when `state_file` is set, load the state (relative paths resolved) instead of `files_state`, and close sessions with `close(delete_files=False)`
   - **config guard:** raise `ValueError` before the first question if the chunking or embedding in `prepare.json` differs from `cfg.agent`
   - add means per tag (`hybrid`, `table`, `document`) to `metrics.json`
-- [ ] **Report** (`evals/report.py`): add the predicted `object_ids` to each row; when `eval.predictions` is true, write `predictions.jsonl` (`qa_id`, `answer` = `final_answer`, `object_ids`); copy `prepare.json` into `metrics.json` under `"data"`.
+- [x] **Report** (`evals/report.py`): add the predicted `object_ids` to each row; when `eval.predictions` is true, write `predictions.jsonl` (`qa_id`, `answer` = `final_answer`, `object_ids`); copy `prepare.json` into `metrics.json` under `"data"`.
 - [x] **Config:** replace `configs/eval/lakequest_bank_dev.yaml` with `configs/eval/lakequest_bank.yaml` (done in Phase 5.3, because `prepare` needs it) (design §5: `profile: lakequest`, `intent_enabled: false`, all seven metrics, `predictions: true`).
-- [ ] **Tests** (`tests/test_eval_run.py`, fake session and the 5.3 fixture bundle):
+- [x] **Tests** (`tests/test_eval_run.py`, fake session and the 5.3 fixture bundle):
   - the session receives the loaded state
   - `bank.db` and `docs.db` survive the run
   - `predictions.jsonl` has one row per case with `qa_id` and `answer`
   - a chunking mismatch raises before any question
   - the per-tag means are present
   - the shipments tests still pass
-- [ ] **Dev script** `phase_5_4.py`: run `lakequest_bank.yaml` with `dataset.limit=3` on the live agent; print each answer, its `answer_f1` and its `object_ids`.
+- [x] **Dev script** `phase_5_4.py`: run `lakequest_bank.yaml` with `dataset.limit=3` on the live agent; print each answer, its `answer_f1` and its `object_ids`.
 
 ## Phase 5.5 — Run and Official Check
 

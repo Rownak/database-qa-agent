@@ -130,3 +130,108 @@ def test_cli_creates_the_run_folder_and_prints_the_summary(cfg_file, tmp_path, m
 def test_format_summary_marks_missing_metrics():
     text = format_summary({"n": 1, "errors": 0, "latency_p50_s": None, "latency_p95_s": None, "metrics": {"a": None, "b": 0.5}})
     assert "a" in text and "-" in text and "0.50" in text
+
+
+# ---- prebuilt bundle (LakeQuest bank_sample): state_file, config guard, predictions ----
+
+from pathlib import Path  # noqa: E402
+
+from evals.lakequest import prepare  # noqa: E402
+from tests.test_lakequest_prepare import SMALL, config as lake_config, lake_zip  # noqa: E402,F401  (fixtures)
+
+
+class FakeBundleSession:
+    created, closed = [], []
+
+    def __init__(self, cfg, state):
+        FakeBundleSession.created.append(state)
+
+    def ask(self, question):
+        calls = [{"name": "run_sql", "args": {"query": 'SELECT * FROM "client"'}, "response": {"status": "success"}}]
+        return TurnResult("Yes.\nSources: SELECT 1", calls, None, 1.0)
+
+    def close(self, delete_files=True):
+        FakeBundleSession.closed.append(delete_files)
+
+
+@pytest.fixture(autouse=True)
+def reset_bundle_fake():
+    FakeBundleSession.created, FakeBundleSession.closed = [], []
+
+
+@pytest.fixture
+def bundle(lake_zip, lake_config, tmp_path, fake_embed) -> Path:
+    out = tmp_path / "bundle"
+    prepare(lake_zip, None, None, "bank", lake_config, out, counts=SMALL)
+    return out
+
+
+def bundle_cfg(bundle, *overrides):
+    path = bundle / "run.yaml"
+    path.write_text(
+        yaml.safe_dump(
+            {
+                "name": "bundle",
+                "agent": {"profile": "lakequest", "intent_enabled": False, "chunking": {"chunk_words": 60}},
+                "dataset": {"path": str(bundle / "dataset.yaml")},
+                "eval": {"metrics": ["tool_sequence_match", "answer_f1", "object_f1", "coverage"], "predictions": True},
+            }
+        ),
+        encoding="utf-8",
+    )
+    return load_config(path, list(overrides))
+
+
+def test_prebuilt_state_is_loaded_with_absolute_paths_and_kept(bundle, tmp_path):
+    run_eval(bundle_cfg(bundle), tmp_path / "run", session_factory=FakeBundleSession)
+    assert len(FakeBundleSession.created) == 7  # SMALL: 2 + 3 + 2 cases, one session each
+    state = FakeBundleSession.created[0]
+    assert Path(state["db_path"]).is_absolute() and Path(state["db_path"]) == (bundle / "bank.db").resolve()
+    assert Path(state["docs_db_path"]) == (bundle / "docs.db").resolve()
+    assert state["column_map"] == {} and "upload_b64" not in state
+    assert (bundle / "bank.db").is_file() and (bundle / "docs.db").is_file()
+    assert FakeBundleSession.closed == [False] * 7  # the shared bundle is never deleted
+
+
+def test_predictions_jsonl_has_one_row_per_case(bundle, tmp_path):
+    run_dir = tmp_path / "run"
+    run_eval(bundle_cfg(bundle), run_dir, session_factory=FakeBundleSession)
+    rows = [json.loads(line) for line in (run_dir / "predictions.jsonl").read_text(encoding="utf-8").splitlines()]
+    ids = [c["id"] for c in yaml.safe_load((bundle / "dataset.yaml").read_text(encoding="utf-8"))["cases"]]
+    assert [r["qa_id"] for r in rows] == ids
+    assert all(r["answer"] == "Yes." for r in rows)  # the "Sources:" line is removed, as answer_f1 scores it
+    assert all(isinstance(r["object_ids"], list) and r["object_ids"] == ["client"] for r in rows)
+    results = [json.loads(line) for line in (run_dir / "results.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert results[0]["object_ids"] == ["client"]
+
+
+def test_no_predictions_file_by_default(bundle, tmp_path):
+    run_dir = tmp_path / "run"
+    run_eval(bundle_cfg(bundle, "eval.predictions=false"), run_dir, session_factory=FakeBundleSession)
+    assert not (run_dir / "predictions.jsonl").exists()
+
+
+def test_metrics_have_per_tag_means_and_the_bundle_info(bundle, tmp_path):
+    run_dir = tmp_path / "run"
+    metrics = run_eval(bundle_cfg(bundle), run_dir, session_factory=FakeBundleSession)
+    assert {t: metrics["by_tag"][t]["n"] for t in ("hybrid", "table", "document")} == SMALL
+    assert metrics["by_tag"]["table"]["metrics"]["tool_sequence_match"] == 1.0  # run_sql only
+    assert metrics["by_tag"]["hybrid"]["metrics"]["tool_sequence_match"] == 0.0
+    assert metrics["metrics"]["coverage"] == 1.0 and metrics["data"]["chunking"]["chunk_words"] == 60
+    assert json.loads((run_dir / "metrics.json").read_text(encoding="utf-8"))["data"]["counts"]["cases"] == 7
+
+
+def test_a_chunking_mismatch_raises_before_any_question(bundle, tmp_path):
+    with pytest.raises(ValueError, match="chunking"):
+        run_eval(bundle_cfg(bundle, "agent.chunking.chunk_words=80"), tmp_path / "run", session_factory=FakeBundleSession)
+    assert FakeBundleSession.created == []
+
+
+def test_an_embedding_mismatch_raises(bundle, tmp_path):
+    with pytest.raises(ValueError, match="embedding"):
+        run_eval(bundle_cfg(bundle, "agent.embedding.dim=256"), tmp_path / "run", session_factory=FakeBundleSession)
+
+
+def test_a_prebuilt_dataset_cannot_run_in_retrieval_mode(bundle, tmp_path):
+    with pytest.raises(ValueError, match="agent mode"):
+        run_eval(bundle_cfg(bundle, "eval.mode=retrieval"), tmp_path / "run", session_factory=FakeBundleSession)
