@@ -223,3 +223,6 @@ __marimo__/
 *.db
 # Staged UI image build context (scripts/stage_ui_context.py)
 .ui_build/
+
+# benchmark
+benchmark/

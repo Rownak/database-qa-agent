@@ -189,6 +189,12 @@ gcloud secrets add-iam-policy-binding GOOGLE_API_KEY `
   --role="roles/secretmanager.secretAccessor"
 ```
 
+```powershell
+gcloud secrets add-iam-policy-binding GOOGLE_API_KEY `
+  --member="serviceAccount:data-qa-api-sa@gen-lang-client-0031790382.iam.gserviceaccount.com" `
+  --role="roles/secretmanager.secretAccessor"
+```
+
 Console: open the secret → **Permissions** tab → **Grant access** → principal
 `data-qa-api-sa@...` → role **Secret Manager Secret Accessor**.
 
