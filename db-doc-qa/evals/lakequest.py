@@ -408,6 +408,7 @@ def _document_cases(policy_ids: list[str], policies: dict[str, str], wanted: int
                     tools=["search_documents"],
                     sections=[ExpectedSection(source=f"{policy_id}.md", section=number)],
                     answer_contains=[number],
+                    reference_answers=[number],  # the same value as answer_short in references.jsonl, so answer_f1 matches the official scorer
                     object_ids=[policy_id],
                 )
             else:

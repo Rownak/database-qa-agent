@@ -101,6 +101,48 @@ With the sample data (table columns: `shipment_id`, `shipment_type`, `status`, `
 | Shipment 99999 is delayed. What should I do? | hybrid | record not found: only general guidance, labelled as such |
 | Delete all rows | database | refused (read-only) |
 
+## LakeQuest evaluation
+
+An internal evaluation on the LakeQuest **bank** lake. `bank_sample` has 40 cases (20 hybrid, 10 table, 10 document) generated from the public snapshot, so no Codabench files are needed. Scores are for internal comparison only, not leaderboard results. Get the data first (the `benchmark/` folder is git-ignored, so nothing from it is committed):
+
+```bash
+# from the project root
+mkdir benchmark && cd benchmark
+git clone https://github.com/michael0402/LakeQuest.git
+cd LakeQuest/public_data && unzip public_lake_data.zip   # PowerShell: Expand-Archive public_lake_data.zip -DestinationPath public_lake_data
+```
+
+`prepare` reads `public_lake_data.zip` itself, so keep the zip next to the extracted folder. Then run from `db-doc-qa/`:
+
+```bash
+# 1. Build the bundle once (bank.db, docs.db, state.json, dataset.yaml, reference/); embeds the policies, needs GOOGLE_API_KEY
+uv run python -m evals.lakequest prepare --lake-zip ../benchmark/LakeQuest/public_data/public_lake_data.zip   --config configs/eval/lakequest_bank.yaml --out ../benchmark/lakequest_prepared/bank_sample
+
+# 2. Run the agent on the cases (add dataset.limit=5 for a quick check)
+uv run python -m evals configs/eval/lakequest_bank.yaml
+
+# 3. Check against the official scorer (run folder = the newest in runs/)
+RUN=runs/<timestamp>_lakequest_bank_sample
+LAKEQUEST_REFERENCE_DIR=../benchmark/lakequest_prepared/bank_sample/reference LAKEQUEST_RESULT_DIR=$RUN LAKEQUEST_SCORE_OUTPUT_DIR=$RUN/official uv run python ../benchmark/LakeQuest/scoring_program/score.py
+uv run python -m dev_test.phase_5_5 $RUN     # our metrics next to the official scores.json
+```
+
+The agent only sees the corpus tables and policies; the benchmark build tables (such as `persona_workflows`) are read only by the case generator. The run adds `predictions.jsonl` and means per case type to `metrics.json`. Rebuild the bundle when you change `agent.chunking` or `agent.embedding`: the run stops if they differ from the bundle's `prepare.json`.
+
+**Metrics.** `answer_f1` is the best token F1 of the answer against the reference answers (same tokenizer as the official scorer), `object_f1` the set F1 of the cited policies and queried tables against the gold object ids, `coverage` the share of non-empty answers. `tool_sequence_match`, `section_recall`, `answer_contains` and `citation_precision` check the tool order, the retrieved sections, the expected value and that every citation was retrieved.
+
+**Results** (40 cases, `gemini-3.5-flash-lite`, 0 errors, p50 2.8 s, p95 6.3 s; our `answer_f1`, `object_f1` and `coverage` equal the official scorer's):
+
+| Type | `answer_f1` | `object_f1` | `tool_sequence_match` | `section_recall` |
+|---|---|---|---|---|
+| hybrid (20) | 0.33 | 0.59 | 0.95 | 0.58 |
+| table (10) | 0.31 | 0.66 | 1.00 | – |
+| document (10) | 0.38 | 1.00 | 1.00 | 1.00 |
+| **overall** | **0.34** | **0.71** | **0.97** | **0.79** |
+
+Token F1 rewards wording, not correctness: table and section answers are right (`answer_contains` 1.00) but their one-token references keep `answer_f1` low. The weak spot is the hybrid type, where the agent sometimes picks the wrong policy.
+
+
 ## Deploy to Cloud Run
 
 The demo runs on Google Cloud Run as two services:

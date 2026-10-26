@@ -270,6 +270,7 @@ def test_sample_document_cases_match_the_policy_headings(lake_zip, config, tmp_p
     title, number = headings[policy_id]
     assert section_q.question == f"Under policy {policy_id}, which section covers {title}?"
     assert section_q.expected.answer_contains == [number] == [section_q.expected.sections[0].section]
+    assert section_q.expected.reference_answers == [number]  # answer_f1 sees it, like the official scorer does
     assert purpose_q.question.startswith("What is the purpose of policy ")
     purpose_id = purpose_q.expected.object_ids[0]
     assert purpose_q.expected.reference_answers == [{"alpha-policy": "Keep records safe.", "beta-policy": "Handle cheques."}[purpose_id]]

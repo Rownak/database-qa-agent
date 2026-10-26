@@ -144,12 +144,12 @@ Every phase ends with the following (CLAUDE.md):
 
 **Goal:** a first internal result on `bank_sample`, confirmed by the official scorer.
 
-- [ ] **Run all 40 cases:** `uv run python -m evals configs/eval/lakequest_bank.yaml`.
-- [ ] **Official scorer:** run `score.py` with `LAKEQUEST_REFERENCE_DIR` set to the bundle's `reference/` folder and `LAKEQUEST_RESULT_DIR` set to the run folder (design §6). Its `answer_f1` must equal ours.
-- [ ] **Read the results:** for each type, look at the lowest-scoring row. Classify the failure as wrong SQL, wrong policy or section, correct but differently worded, or too long. If the cause is format, adjust `LAKE_INSTRUCTION` once and re-run.
-- [ ] **Record** in the execution log the metrics overall and per type, the error count, p50/p95 latency and the approximate number of model calls.
-- [ ] **Docs:** add a short "LakeQuest evaluation" section to `README.md` with the `prepare`, run and official-scorer commands.
-- [ ] **Dev script** `phase_5_5.py`: read a run folder and print our metrics next to the official `scores.json`.
+- [x] **Run all 40 cases:** `uv run python -m evals configs/eval/lakequest_bank.yaml`.
+- [x] **Official scorer:** run `score.py` with `LAKEQUEST_REFERENCE_DIR` set to the bundle's `reference/` folder and `LAKEQUEST_RESULT_DIR` set to the run folder (design §6). Its `answer_f1` must equal ours.
+- [x] **Read the results:** for each type, look at the lowest-scoring row. Classify the failure as wrong SQL, wrong policy or section, correct but differently worded, or too long. If the cause is format, adjust `LAKE_INSTRUCTION` once and re-run.
+- [x] **Record** in the execution log the metrics overall and per type, the error count, p50/p95 latency and the approximate number of model calls.
+- [x] **Docs:** add a short "LakeQuest evaluation" section to `README.md` with the `prepare`, run and official-scorer commands.
+- [x] **Dev script** `phase_5_5.py`: read a run folder and print our metrics next to the official `scores.json`.
 
 ---
 
