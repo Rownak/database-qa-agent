@@ -19,7 +19,7 @@ def test_agent_definition():
     assert root_agent.name == "qa_orchestrator"
     assert root_agent.model == AGENT_MODEL == "gemini-3.5-flash-lite"
     assert [t.__name__ for t in root_agent.tools] == ["run_sql", "search_documents"]
-    assert root_agent.before_agent_callback is ensure_data
+    assert callable(root_agent.before_agent_callback)  # a closure from make_ensure_data(cfg)
     assert "document" in root_agent.description and "database" in root_agent.description
 
 
@@ -43,8 +43,9 @@ def test_all_placeholders_resolve_with_a_real_state(root):
 
     ctx = _ctx()
     ensure_data(ctx)
-    ro = SimpleNamespace(state=ctx.state, session=SimpleNamespace(state=ctx.state))
-    ro.__class__ = type("Ctx", (ReadonlyContext,), {"state": property(lambda self: ctx.state), "_invocation_context": None})
+    # A real ReadonlyContext over a fake invocation context (reassigning ``__class__`` of a
+    # SimpleNamespace is not allowed on this Python, and ADK reads the state through the context).
+    ro = ReadonlyContext(SimpleNamespace(session=SimpleNamespace(state=ctx.state)))
     text = asyncio.run(inject_session_state(INSTRUCTION, ro))
     assert "shipment_id" in text and "shipment_delay_policy.pdf" in text
     assert "{" not in text
@@ -268,8 +269,8 @@ def test_ensure_data_embedding_failure_still_builds_docs_db(root, monkeypatch):
 def test_ensure_data_classifies_after_both_databases_are_ready(root, monkeypatch):
     seen = {}
 
-    def fake_classify(question, schema, docs):
-        seen.update(schema=schema, docs=docs)
+    def fake_classify(question, schema, docs, model=None):
+        seen.update(schema=schema, docs=docs, model=model)
         return intent.IntentResult(intent="document", reason="r")
 
     monkeypatch.setattr(intent, "classify", fake_classify)
@@ -277,4 +278,71 @@ def test_ensure_data_classifies_after_both_databases_are_ready(root, monkeypatch
     ctx.user_content = SimpleNamespace(parts=[SimpleNamespace(text="q")])
     ensure_data(ctx)
     assert "shipment_id" in seen["schema"] and "shipment_delay_policy.pdf" in seen["docs"]
-    assert ctx.state["intent"] == "document"
+    assert ctx.state["intent"] == "document" and seen["model"] == AGENT_MODEL
+
+
+# --- configuration (Phase 4.2) ---
+
+
+def test_build_agent_uses_the_configured_model_and_temperature():
+    from data_agent.agent import build_agent
+    from data_agent.config import AgentConfig, ModelConfig
+
+    default = build_agent(AgentConfig())
+    assert default.model == AGENT_MODEL and default.generate_content_config is None
+    custom = build_agent(AgentConfig(model=ModelConfig(agent="x", temperature=0.0)))
+    assert custom.model == "x" and custom.generate_content_config.temperature == 0.0
+
+
+def test_ensure_data_writes_the_agent_config_and_passes_settings(root, monkeypatch):
+    from data_agent.agent import make_ensure_data
+    from data_agent.config import AgentConfig, ChunkingConfig, ModelConfig
+
+    seen = {}
+
+    def fake_classify(question, schema, docs, model=None):
+        seen["model"] = model
+        return intent.IntentResult(intent="database", reason="r")
+
+    real_build = doc_ingest.build
+
+    def spy_build(docs, session_dir, **kwargs):
+        seen["chunking"] = kwargs.get("chunking")
+        return real_build(docs, session_dir, **kwargs)
+
+    monkeypatch.setattr(intent, "classify", fake_classify)
+    monkeypatch.setattr(doc_ingest, "build", spy_build)
+    cfg = AgentConfig(model=ModelConfig(agent="a", intent="i"), chunking=ChunkingConfig(chunk_words=40))
+    ctx = _ctx()
+    ctx.user_content = SimpleNamespace(parts=[SimpleNamespace(text="q")])
+    make_ensure_data(cfg)(ctx)
+    assert ctx.state["agent_config"] == cfg.model_dump(mode="json")
+    assert seen == {"model": "i", "chunking": cfg.chunking}
+
+
+def test_intent_disabled_skips_classification(root, monkeypatch):
+    from data_agent.agent import make_ensure_data
+    from data_agent.config import AgentConfig
+
+    monkeypatch.setattr(intent, "classify", lambda *a, **k: pytest.fail("classify must not run"))
+    ctx = _ctx()
+    ctx.user_content = SimpleNamespace(parts=[SimpleNamespace(text="q")])
+    make_ensure_data(AgentConfig(intent_enabled=False))(ctx)
+    assert ctx.state["intent"] == "hybrid" and ctx.state["intent_reason"] == "intent_disabled"
+
+
+def test_search_documents_uses_the_state_config_and_defaults_when_missing(root):
+    from data_agent.agent import make_ensure_data
+    from data_agent.config import AgentConfig, RetrievalConfig
+    from data_agent.tools import search_documents
+
+    cfg = AgentConfig(retrieval=RetrievalConfig(mode="bm25", max_top_k=1))
+    ctx = _ctx()
+    make_ensure_data(cfg)(ctx)
+    out = search_documents("express shipments", top_k=5, tool_context=ctx)
+    assert len(out["passages"]) == 1 and out["passages"][0]["matched_by"] == "bm25"
+    assert "Semantic search was unavailable" not in out.get("note", "")  # bm25 mode is deliberate
+
+    del ctx.state["agent_config"]  # a session from an older server: fall back to the defaults
+    out = search_documents("express shipments", top_k=5, tool_context=ctx)
+    assert len(out["passages"]) > 1

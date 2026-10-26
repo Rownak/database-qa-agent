@@ -11,13 +11,16 @@ are its only way to touch data. ``ensure_data`` builds the session's ``data.db``
 import base64
 import binascii
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 from dotenv import load_dotenv
 from google.adk.agents import Agent
 from google.adk.agents.callback_context import CallbackContext
+from google.genai import types
 
 from data_agent import doc_ingest, intent, sessions
+from data_agent.config import AgentConfig, ModelConfig, load_agent_config
 from data_agent.ingest import (
     SAMPLE_DOCS_DIR,
     IngestError,
@@ -31,7 +34,7 @@ from data_agent.tools import run_sql, search_documents
 # Loaded here so the key is available however the agent is started (Streamlit, scripts).
 load_dotenv()
 
-AGENT_MODEL = "gemini-3.5-flash-lite"
+AGENT_MODEL = ModelConfig().agent  # alias of the config default, kept for existing imports
 
 # ADK replaces {schema_summary}, {docs_summary}, {intent?} and {load_error?} with values
 # from the session state (the optional ones may be empty), so this text must not contain
@@ -84,7 +87,27 @@ _STATE_KEYS = ("db_path", "column_map", "schema_summary")
 logger = get_logger(__name__)
 
 
-def ensure_data(callback_context: CallbackContext) -> None:
+def make_ensure_data(cfg: AgentConfig) -> Callable[[CallbackContext], None]:
+    """Returns the before-agent callback :func:`_ensure_data` bound to ``cfg``.
+
+    Args:
+        cfg: Agent settings; the callback passes the chunking and embedding settings to
+            ``doc_ingest.build``, the intent model to ``intent.classify``, and skips
+            classification when ``intent_enabled`` is false.
+
+    Returns:
+        A callback taking the ADK ``CallbackContext``. It also stores
+        ``state["agent_config"]`` (the JSON form of ``cfg``) so tools and logs see the
+        settings used.
+    """
+
+    def ensure_data(callback_context: CallbackContext) -> None:
+        return _ensure_data(callback_context, cfg)
+
+    return ensure_data
+
+
+def _ensure_data(callback_context: CallbackContext, cfg: AgentConfig) -> None:
     """Makes sure this session's ``data.db`` and ``docs.db`` exist (before-agent callback).
 
     The Streamlit UI (or ``adk web``) creates the ADK session; the databases themselves
@@ -102,6 +125,7 @@ def ensure_data(callback_context: CallbackContext) -> None:
     Args:
         callback_context: ADK callback context; its ``state`` is read and updated and
             its ``session.id`` names the session folder.
+        cfg: Agent settings (see :func:`make_ensure_data`).
 
     Returns:
         None, so the agent run continues normally.
@@ -119,14 +143,17 @@ def ensure_data(callback_context: CallbackContext) -> None:
     state = callback_context.state
     session_id = callback_context.session.id
     db_path = state.get("db_path")
+    dumped = cfg.model_dump(mode="json")
+    if state.get("agent_config") != dumped:
+        state["agent_config"] = dumped
 
     if all(state.get(k) is not None for k in _STATE_KEYS) and Path(db_path).is_file():
         sessions.touch(Path(db_path).parent)
     else:
         _build_session_data(state, session_id)
     if not _docs_ready(state):
-        _build_session_docs(state, session_id)
-    _classify_turn(callback_context)
+        _build_session_docs(state, session_id, cfg)
+    _classify_turn(callback_context, cfg)
     _sweep()
     return None
 
@@ -143,12 +170,13 @@ def _docs_ready(state) -> bool:
     return path is None or Path(path).is_file()
 
 
-def _build_session_docs(state, session_id: str) -> None:
+def _build_session_docs(state, session_id: str, cfg: AgentConfig) -> None:
     """Builds ``docs.db`` from the ``docs`` state key (or the sample documents).
 
     Args:
         state: The ADK session state (mutable mapping).
         session_id: Id of the session; names the folder when ``data.db`` has none.
+        cfg: Agent settings; ``chunking`` and ``embedding`` go to ``doc_ingest.build``.
 
     Side Effects:
         Writes ``docs.db`` next to ``data.db``, sets ``docs_db_path`` (``None`` when no
@@ -165,7 +193,7 @@ def _build_session_docs(state, session_id: str) -> None:
         if state.get("db_path")
         else sessions.new_session_dir(session_id, sessions.ROOT)
     )
-    result = doc_ingest.build(list(docs), session_dir) if docs else None
+    result = doc_ingest.build(list(docs), session_dir, chunking=cfg.chunking, embedding=cfg.embedding) if docs else None
     if result is None:  # the user removed every document
         state["docs_db_path"], state["docs_summary"] = None, "No documents loaded"
         logger.info("session %s: no documents", session_id)
@@ -196,7 +224,7 @@ def _sample_docs() -> list[dict]:
     ]
 
 
-def _classify_turn(callback_context: CallbackContext) -> None:
+def _classify_turn(callback_context: CallbackContext, cfg: AgentConfig) -> None:
     """Classifies the current user message and stores ``intent`` / ``intent_reason``.
 
     Runs after the databases are ready so the classifier sees the schema and document
@@ -204,6 +232,8 @@ def _classify_turn(callback_context: CallbackContext) -> None:
 
     Args:
         callback_context: ADK callback context; ``user_content`` holds the message.
+        cfg: Agent settings; with ``intent_enabled`` false the turn is not classified
+            and the intent is ``hybrid`` (reason ``intent_disabled``).
 
     Side Effects:
         Updates the state and logs the intent (never the question).
@@ -212,7 +242,15 @@ def _classify_turn(callback_context: CallbackContext) -> None:
     parts = getattr(content, "parts", None) or []
     question = " ".join(p.text for p in parts if getattr(p, "text", None)) or None
     state = callback_context.state
-    result = intent.classify(question, state.get("schema_summary"), state.get("docs_summary"))
+    if not cfg.intent_enabled:
+        state["intent"], state["intent_reason"] = "hybrid", "intent_disabled"
+        return
+    result = intent.classify(
+        question,
+        state.get("schema_summary"),
+        state.get("docs_summary"),
+        model=cfg.model.intent or cfg.model.agent,
+    )
     state["intent"], state["intent_reason"] = result.intent, result.reason
     logger.info("session %s: intent=%s (%s)", callback_context.session.id, result.intent, result.reason)
 
@@ -281,14 +319,35 @@ def _sweep() -> None:
         logger.info("swept %d stale session folder(s)", len(removed))
 
 
-root_agent = Agent(
-    name="qa_orchestrator",
-    model=AGENT_MODEL,
-    description=(
-        "Answers shipment questions from a database table (read-only SQL) and from "
-        "policy documents (cited search), using both when a question needs them."
-    ),
-    instruction=INSTRUCTION,
-    before_agent_callback=ensure_data,
-    tools=[run_sql, search_documents],
-)
+ensure_data = make_ensure_data(AgentConfig())  # default settings; kept importable for tests and tools
+
+
+def build_agent(cfg: AgentConfig) -> Agent:
+    """Builds the orchestrator agent from a configuration.
+
+    Args:
+        cfg: Agent settings. ``cfg.model.agent`` is the model; the temperature is set only
+            when it is not ``None``, so the model default stays the default.
+
+    Returns:
+        An ADK ``Agent`` whose before-agent callback is ``make_ensure_data(cfg)``.
+    """
+    extra = {}
+    if cfg.model.temperature is not None:
+        extra["generate_content_config"] = types.GenerateContentConfig(temperature=cfg.model.temperature)
+    return Agent(
+        name="qa_orchestrator",
+        model=cfg.model.agent,
+        description=(
+            "Answers shipment questions from a database table (read-only SQL) and from "
+            "policy documents (cited search), using both when a question needs them."
+        ),
+        instruction=INSTRUCTION,
+        before_agent_callback=make_ensure_data(cfg),
+        tools=[run_sql, search_documents],
+        **extra,
+    )
+
+
+# ADK loads this variable. DATA_AGENT_CONFIG selects a YAML file; unset (production) means the defaults.
+root_agent = build_agent(load_agent_config())

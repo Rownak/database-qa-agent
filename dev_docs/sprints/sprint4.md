@@ -34,47 +34,47 @@ Every phase ends with the following (CLAUDE.md):
 
 **Goal:** all tunable settings live in one Pydantic model that loads from YAML, with the current values as defaults.
 
-- [ ] **Dependencies:** add `pydantic` and `pyyaml` to `pyproject.toml` (already installed by ADK; run `uv lock`). Add `pydantic` to `requirements-ui.txt` and `data_agent/requirements.txt` with the versions from `uv.lock` (`pyyaml` only to the backend one).
-- [ ] **Add `data_agent/config.py`** with `ConfigDict(extra="forbid", frozen=True)` on every model: `ModelConfig`, `EmbeddingConfig`, `ChunkingConfig`, `RetrievalConfig` (`mode: hybrid | bm25 | dense`), `AgentConfig`, `DatasetConfig`, `EvalConfig`, `RunConfig` (fields and defaults as in design §3.1).
-- [ ] **Loading:**
+- [x] **Dependencies:** add `pydantic` and `pyyaml` to `pyproject.toml` (already installed by ADK; run `uv lock`). Add `pydantic` to `requirements-ui.txt` and `data_agent/requirements.txt` with the versions from `uv.lock` (`pyyaml` only to the backend one).
+- [x] **Add `data_agent/config.py`** with `ConfigDict(extra="forbid", frozen=True)` on every model: `ModelConfig`, `EmbeddingConfig`, `ChunkingConfig`, `RetrievalConfig` (`mode: hybrid | bm25 | dense`), `AgentConfig`, `DatasetConfig`, `EvalConfig`, `RunConfig` (fields and defaults as in design §3.1).
+- [x] **Loading:**
   - `load_config(path, overrides) -> RunConfig`: defaults < YAML < dotted `key=value` overrides, each value parsed with `yaml.safe_load`.
   - `load_agent_config() -> AgentConfig`: reads the `agent:` block of the file in `DATA_AGENT_CONFIG`, or returns the defaults when it is unset.
   - Import `yaml` inside the functions.
-- [ ] **Thread the settings through** with optional keyword arguments whose defaults are the default models:
+- [x] **Thread the settings through** with optional keyword arguments whose defaults are the default models:
   - `doc_ingest.prepare/build` take `chunking=`; `embed`/`build` take `embedding=`.
   - `retrieval.search` takes `cfg=RetrievalConfig`; `mode` skips the BM25 or the dense step.
   - `intent.classify` keeps `model=`; the caller passes `cfg.model.intent or cfg.model.agent`.
-- [ ] **Keep the old module constants** as aliases of the defaults (for example `CHUNK_WORDS = ChunkingConfig().chunk_words`), so no existing import or test changes.
-- [ ] **Tests** (`tests/test_config.py`):
+- [x] **Keep the old module constants** as aliases of the defaults (for example `CHUNK_WORDS = ChunkingConfig().chunk_words`), so no existing import or test changes.
+- [x] **Tests** (`tests/test_config.py`):
   - the defaults equal the old constants (`CHUNK_WORDS`, `EMBED_DIM`, `RRF_K`, `MIN_DENSE_SIM`, `MAX_TOP_K`, `AGENT_MODEL`)
   - an unknown YAML key and an out-of-range value (`chunk_words: 5`) raise `ValidationError`
   - an override such as `agent.retrieval.min_dense_sim=0.55` has the right type and beats the YAML value
   - `retrieval.search(..., cfg=RetrievalConfig(mode="bm25"))` returns only `matched_by == "bm25"` hits (with the existing fixtures and `fake_embed`)
   - `load_agent_config()` returns the defaults when `DATA_AGENT_CONFIG` is unset
-- [ ] **Dev script** `phase_4_1.py`: load `configs/eval/smoke.yaml` (create it here with the design §6 content, plus the `dataset:` path) and print the resolved config as YAML.
+- [x] **Dev script** `phase_4_1.py`: load `configs/eval/smoke.yaml` (create it here with the design §6 content, plus the `dataset:` path) and print the resolved config as YAML.
 
 ## Phase 4.2 — Shared Events, Agent Factory and Runner
 
 **Goal:** the app and the future evaluation call the same code to build the agent and ask a question.
 
-- [ ] **Add `data_agent/events.py`:** a `TurnResult` dataclass (`answer`, `calls`, `intent`, `latency_s`, `error`) and `parse_events(events, latency_s=0.0)`, moved from `ui_client.py`. `ui_client` imports and re-exports it; `ask()` returns the same fields as before (`answer, calls, intent`) or the `TurnResult`, whichever keeps `app.py` and the existing tests unchanged. No ADK import.
-- [ ] **Agent factory in `agent.py`:**
+- [x] **Add `data_agent/events.py`:** a `TurnResult` dataclass (`answer`, `calls`, `intent`, `latency_s`, `error`) and `parse_events(events, latency_s=0.0)`, moved from `ui_client.py`. `ui_client` imports and re-exports it; `ask()` returns the same fields as before (`answer, calls, intent`) or the `TurnResult`, whichever keeps `app.py` and the existing tests unchanged. No ADK import.
+- [x] **Agent factory in `agent.py`:**
   - `build_agent(cfg: AgentConfig) -> Agent` uses `cfg.model.agent` and sets `temperature` only when it is not `None`.
   - `make_ensure_data(cfg)` returns the callback; it passes the chunking and embedding settings to `doc_ingest.build` and the intent model to `intent.classify`, skips classification when `intent_enabled` is false (state `intent = "hybrid"`, reason `"intent_disabled"`), and stores `state["agent_config"] = cfg.model_dump(mode="json")`.
   - `ensure_data = make_ensure_data(AgentConfig())` stays importable for existing tests.
   - `root_agent = build_agent(load_agent_config())`.
-- [ ] **Tools read the config:** `search_documents` builds `RetrievalConfig` and `EmbeddingConfig` from `tool_context.state["agent_config"]`, falling back to the defaults when the key is missing.
-- [ ] **Add `data_agent/runner.py`:**
+- [x] **Tools read the config:** `search_documents` builds `RetrievalConfig` and `EmbeddingConfig` from `tool_context.state["agent_config"]`, falling back to the defaults when the key is missing.
+- [x] **Add `data_agent/runner.py`:**
   - `files_state(table, docs)` builds `upload_name`, `upload_b64` and `docs` (`None` → samples, `[]` → no documents).
   - `AgentSession(cfg, state, session_id=None)` creates an `InMemorySessionService` and `Runner` for `build_agent(cfg)`; `ask()` (sync) and `ask_async()` return a `TurnResult` and never raise (an exception becomes `error`); `close(delete_files=True)` deletes the ADK session and, optionally, the session folder.
-- [ ] **Use it in `app.py` local mode:** replace the Runner and event code in `_ask` and `_local_new_session` with `AgentSession` (same id and folder; a document change calls `close(delete_files=False)`, then opens a new session). API mode is untouched.
-- [ ] **UI image:** add `events.py` and `config.py` to `Dockerfile.ui` and to `FILES` in `scripts/stage_ui_context.py` (`tests/test_stage_ui_context.py` checks that they match).
-- [ ] **Tests:**
+- [x] **Use it in `app.py` local mode:** replace the Runner and event code in `_ask` and `_local_new_session` with `AgentSession` (same id and folder; a document change calls `close(delete_files=False)`, then opens a new session). API mode is untouched.
+- [x] **UI image:** add `events.py` and `config.py` to `Dockerfile.ui` and to `FILES` in `scripts/stage_ui_context.py` (`tests/test_stage_ui_context.py` checks that they match).
+- [x] **Tests:**
   - `tests/test_events.py`: the existing `parse_events` cases, plus a `TurnResult` field check
   - `tests/test_agent.py`: `build_agent(AgentConfig(model=ModelConfig(agent="x")))` has `model == "x"`; `state["agent_config"]` is written; a missing `agent_config` in `search_documents` uses the defaults
   - `tests/test_runner.py`: `files_state(None, [])` has `docs == []`; `AgentSession.ask` with a patched `Runner` that yields canned events returns the expected `TurnResult`, and an exception gives `error` set and no raise
   - existing `test_app*` and `test_ui_client` suites pass unchanged
-- [ ] **Dev script** `phase_4_2.py`: with real credentials, `AgentSession(AgentConfig(), files_state(None, None)).ask("Where is shipment 12345?")`; print the answer, intent, tool names and latency.
+- [x] **Dev script** `phase_4_2.py`: with real credentials, `AgentSession(AgentConfig(), files_state(None, None)).ask("Where is shipment 12345?")`; print the answer, intent, tool names and latency.
 
 ## Phase 4.3 — Evaluation
 

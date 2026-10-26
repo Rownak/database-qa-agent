@@ -12,6 +12,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, ValidationError
 
+from data_agent.config import ModelConfig
 from data_agent.logs import get_logger
 
 logger = get_logger(__name__)
@@ -75,7 +76,8 @@ def classify(
         question: The user's message text. Empty or ``None`` skips the API call.
         schema_summary: Table schema text, for context. Missing values read as "(none)".
         docs_summary: Loaded-document summary, for context. Missing values read as "(none)".
-        model: Gemini model id. Defaults to :data:`data_agent.agent.AGENT_MODEL`.
+        model: Gemini model id. Defaults to ``ModelConfig().agent``; the caller passes
+            ``cfg.model.intent or cfg.model.agent``.
 
     Returns:
         A validated :class:`IntentResult`. On an empty question, an API error, empty
@@ -93,10 +95,8 @@ def classify(
         from google import genai
         from google.genai import types
 
-        if model is None:
-            from data_agent.agent import AGENT_MODEL as model  # lazy: agent imports this module
-
         load_dotenv()
+        model = model or ModelConfig().agent
         prompt = PROMPT.format(
             schema_summary=schema_summary or "(none)",
             docs_summary=docs_summary or "(none)",

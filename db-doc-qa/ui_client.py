@@ -22,6 +22,8 @@ from urllib.parse import urlparse
 
 import requests
 
+from data_agent.events import TurnResult, parse_events as _parse_events  # noqa: F401  (TurnResult re-exported)
+
 APP_NAME = "data_agent"  # the agent folder name, which ADK uses as the app name
 USER_ID = "user"
 CONNECT_TIMEOUT_S = 10
@@ -211,51 +213,19 @@ def get_intent(session_id: str) -> str | None:
 
 
 def parse_events(events: list[dict]) -> tuple[str, list[dict], str | None]:
-    """Extracts the final answer, the tool calls and the intent from ``/run`` events.
+    """Extracts ``(answer_text, tool_calls, intent)`` from ``/run`` events.
+
+    A tuple view of :func:`data_agent.events.parse_events`, which holds the parsing and
+    returns the full :class:`~data_agent.events.TurnResult`.
 
     Args:
-        events: The JSON list returned by ``POST /run`` (or the same events dumped from
-            ADK ``Event`` objects with aliases, in local mode).
+        events: The JSON list returned by ``POST /run``.
 
     Returns:
-        ``(answer_text, tool_calls, intent)``. The answer is the text of the last event
-        that has any (model "thought" parts are skipped). Each call is
-        ``{"name", "args", "response"}``; ``response`` is the matching
-        ``functionResponse`` payload (matched by id, else by name in call order), or
-        ``None`` if none arrived. ``intent`` is the last ``stateDelta["intent"]``.
+        ``(answer_text, tool_calls, intent)``; see :class:`~data_agent.events.TurnResult`.
     """
-    calls: list[dict] = []
-    ids: list[str | None] = []
-    answer = ""
-    intent: str | None = None
-    for event in events:
-        delta = (event.get("actions") or {}).get("stateDelta") or {}
-        if isinstance(delta.get("intent"), str):
-            intent = delta["intent"]
-        parts = (event.get("content") or {}).get("parts") or []
-        for part in parts:
-            call = part.get("functionCall")
-            if call:
-                calls.append({"name": call.get("name", ""), "args": dict(call.get("args") or {}), "response": None})
-                ids.append(call.get("id"))
-            resp = part.get("functionResponse")
-            if resp:
-                _attach_response(calls, ids, resp)
-        text = "".join(p.get("text") or "" for p in parts if not p.get("thought"))
-        if text:
-            answer = text
-    return answer, calls, intent
-
-
-def _attach_response(calls: list[dict], ids: list[str | None], resp: dict) -> None:
-    """Stores a ``functionResponse`` on the call it answers (by id, else the first open call of that name)."""
-    rid, name = resp.get("id"), resp.get("name")
-    for call, cid in zip(calls, ids):
-        if call["response"] is not None:
-            continue
-        if (rid and cid == rid) or (not rid and call["name"] == name):
-            call["response"] = resp.get("response") if resp.get("response") is not None else {}
-            return
+    result = _parse_events(events)
+    return result.answer, result.calls, result.intent
 
 
 def format_citation(passage: dict) -> str:
