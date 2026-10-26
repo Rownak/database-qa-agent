@@ -40,6 +40,8 @@ class Expected(BaseModel):
             called; ``None`` skips the check.
         sections: Sections that should appear among the retrieved passages.
         answer_contains: Strings that should appear in the answer.
+        reference_answers: Reference answers for ``answer_f1`` (the best match counts).
+        object_ids: Gold object ids (policy ids and table names) for ``object_f1``.
     """
 
     model_config = _STRICT
@@ -47,6 +49,8 @@ class Expected(BaseModel):
     tools: list[Literal["run_sql", "search_documents"]] | None = None
     sections: list[ExpectedSection] = Field(default_factory=list)
     answer_contains: list[str] = Field(default_factory=list)
+    reference_answers: list[str] = Field(default_factory=list)
+    object_ids: list[str] = Field(default_factory=list)
 
 
 class EvalCase(BaseModel):
@@ -68,6 +72,8 @@ class EvalDataset(BaseModel):
         version: Dataset version; bump it when the cases change.
         table: Table file, relative to ``db-doc-qa/``; ``None`` is the bundled sample.
         docs: A folder or a list of files; ``None`` is the bundled samples, ``[]`` no documents.
+        state_file: A prebuilt session state (JSON) that replaces ``table`` and ``docs``;
+            written by ``evals.lakequest``, read by the runner in Phase 5.3.
         cases: The cases; their ids must be unique.
     """
 
@@ -77,6 +83,7 @@ class EvalDataset(BaseModel):
     version: int
     table: Path | None = None
     docs: Path | list[Path] | None = None
+    state_file: Path | None = None
     cases: list[EvalCase]
 
     @model_validator(mode="after")
