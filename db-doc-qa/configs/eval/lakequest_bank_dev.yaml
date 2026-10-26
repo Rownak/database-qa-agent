@@ -1,0 +1,17 @@
+name: lakequest_bank_dev
+agent:
+  profile: lakequest            # LAKE_INSTRUCTION (shipments is the default)
+  intent_enabled: false         # the classifier prompt is about shipments
+  model:
+    agent: gemini-3.5-flash-lite
+    temperature: 0.0
+  retrieval:
+    mode: hybrid
+    max_top_k: 8
+dataset:
+  path: ../benchmark/lakequest_prepared/bank_dev/dataset.yaml
+  limit: 50                     # start small: about 3 model calls per question
+eval:
+  mode: agent
+  metrics: [answer_f1, object_f1, coverage, citation_precision]
+  predictions: true

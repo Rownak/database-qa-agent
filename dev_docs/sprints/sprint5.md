@@ -39,19 +39,19 @@ Every phase ends with the following (CLAUDE.md):
   - the number of questions per `domain`
 
   If the columns differ from the design (`qa_id`, `question`, `domain`), update the design before Phase 5.2.
-- [ ] **Config** (`data_agent/config.py`):
+- [x] **Config** (`data_agent/config.py`):
   - add `AgentConfig.profile: Literal["shipments", "lakequest"] = "shipments"`
   - add `EvalConfig.predictions: bool = False`
   - add `answer_f1`, `object_f1` and `coverage` to `MetricName`
-- [ ] **Profile** (`data_agent/agent.py`):
+- [x] **Profile** (`data_agent/agent.py`):
   - add `LAKE_INSTRUCTION` (design §6): the tables and policies come from `{schema_summary}` and `{docs_summary}`
   - its rules: quote every table and column name (`"transaction"`); look up a named client with `run_sql` first; use `search_documents` with `source="<policy_id>.md"` when a Policy ID is named
   - its answer format: a direct first sentence, then at most 3 sentences with `[source, §N title]` citations; no headings, SQL or `Sources:` line
   - keep the current grounding and safety rules
   - `build_agent` picks the instruction and description by `cfg.profile`
-- [ ] **Neutral tool text:** change the `run_sql` docstring from "table ``data``" to "the session's SQLite database; the instruction lists its tables".
-- [ ] **Dataset fields** (`evals/dataset.py`): add `Expected.reference_answers: list[str] = []` and `Expected.object_ids: list[str] = []`.
-- [ ] **Metrics** (`evals/metrics.py`):
+- [x] **Neutral tool text:** change the `run_sql` docstring from "table ``data``" to "the session's SQLite database; the instruction lists its tables".
+- [x] **Dataset fields** (`evals/dataset.py`): add `Expected.reference_answers: list[str] = []` and `Expected.object_ids: list[str] = []`.
+- [x] **Metrics** (`evals/metrics.py`):
   - `final_answer(result)` strips a trailing `Sources:` line.
   - `predicted_object_ids(result)` returns the sources of the cited passages, without `.md` (or of all returned passages when nothing is cited), plus the table names after `FROM`/`JOIN` in successful `run_sql` calls. Ids are lower-cased.
   - `answer_f1` is the maximum token F1 over `reference_answers`, using the tokenizer and F1 copied from `score.py` (`[A-Za-z0-9]+`, lower-cased).
@@ -59,35 +59,36 @@ Every phase ends with the following (CLAUDE.md):
   - `coverage` is 1 if `final_answer` is non-empty, else 0.
   - `answer_f1` and `object_f1` return `None` when the expected field is empty.
   - Register the three metrics in `METRICS` and `AGENT_METRICS`.
-- [ ] **Tests:**
+- [x] **Tests:**
   - `test_agent.py`: the default profile still uses `INSTRUCTION`; `profile="lakequest"` uses `LAKE_INSTRUCTION`
   - `test_eval_metrics.py`: each new metric on one passing and one failing hand-made `TurnResult`; `final_answer` removes the `Sources:` line; `predicted_object_ids` reads the cited sources and the SQL tables
   - **parity test:** `answer_f1` equals `score._token_f1` on 5 fixed answer/reference pairs. The test imports `benchmark/LakeQuest/scoring_program/score.py` by path, and is skipped when that file is missing
-- [ ] **Regression:** run `configs/eval/smoke.yaml`. The shipments metrics must not drop.
-- [ ] **Dev script** `phase_5_1.py`: print `answer_f1`, `object_f1` and `coverage` for two hand-made results, and the first 300 characters of the `lakequest` instruction.
+- [x] **Regression:** run `configs/eval/smoke.yaml`. The shipments metrics must not drop.
+- [x] **Dev script** `phase_5_1.py`: print `answer_f1`, `object_f1` and `coverage` for two hand-made results, and the first 300 characters of the `lakequest` instruction.
 
 ## Phase 5.2 — Adapter (`evals/lakequest.py prepare`)
 
 **Goal:** one command turns the LakeQuest files into a self-contained bundle that the agent can use as is.
 
-- [ ] **CLI:** `uv run python -m evals.lakequest prepare --lake-zip … --questions … [--references …] --domain bank --config <run.yaml> --out <dir>`. The `--config` file supplies the chunking and embedding settings.
-- [ ] **`bank.db`:**
+- [x] **CLI:** `uv run python -m evals.lakequest prepare --lake-zip … --questions … [--references …] --domain bank --config <run.yaml> --out <dir>`. The `--config` file supplies the chunking and embedding settings.
+- [x] **`bank.db`:**
   - Extract `financial_data_lake.db` to a temporary folder.
   - Copy only the tables with `object_type == "table"` in `lakes/bank/corpus_objects.parquet` (`ATTACH` plus `CREATE TABLE … AS SELECT`).
   - Stop with an error if a whitelisted table is missing.
-- [ ] **Policies:**
+- [x] **Indexes on `bank.db`:** the lake database has no indexes, and `run_sql` stops a query after 5 seconds. After copying, create an index on every column whose name ends with `_id` in the copied tables (`CREATE INDEX IF NOT EXISTS`). Check on the real lake that a join of `client`, `bank_account` and `transaction` for one client runs well under the 5-second limit.
+- [x] **Policies:**
   - Write each row of `policy_documents.jsonl` whose `object_id` is a `policy_document` in `corpus_objects` as `<object_id>.md`, with `# <title>` as its first line.
   - Normalise headings `## N) ` to `## N `.
   - Build `docs.db` with `doc_ingest.build(entries, out, chunking=…, embedding=…)`.
   - Log the number of documents, chunks and skipped documents.
-- [ ] **`state.json`:** `db_path`, `column_map: {}`, `schema_summary` (per table: name, row count, `column type` list), `docs_db_path`, and `docs_summary` (one line per policy, `<object_id>.md — <title>`). Paths are relative to `state.json`.
-- [ ] **`dataset.yaml`:**
+- [x] **`state.json`:** `db_path`, `column_map: {}`, `schema_summary` (per table: name, row count, `column type` list), `docs_db_path`, and `docs_summary` (one line per policy, `<object_id>.md — <title>`). Paths are relative to `state.json`.
+- [x] **`dataset.yaml`:**
   - `name`, `version`, `state_file: state.json`
   - one case per question of `--domain`: `id = qa_id`, `question`, `tags = [domain]`
   - when `--references` is given, `expected.reference_answers = [answer_short, answer_long]` (empty values left out) and `expected.object_ids = gold_object_ids`
   - stop with a clear error when a required column is missing
-- [ ] **`prepare.json`:** the SHA-256 of each source file, the counts, and the `chunking` and `embedding` settings used.
-- [ ] **Tests** (`tests/test_lakequest_prepare.py`, with a tiny fixture zip built in the test):
+- [x] **`prepare.json`:** the SHA-256 of each source file, the counts, and the `chunking` and `embedding` settings used.
+- [x] **Tests** (`tests/test_lakequest_prepare.py`, with a tiny fixture zip built in the test):
   - the fixture has 2 corpus tables, 1 leak table (`persona_workflows`), 2 policies and 3 questions
   - `bank.db` has exactly the 2 corpus tables; `persona_workflows` is absent
   - a normalised heading gets `section_number == "5"` in `docs.db`

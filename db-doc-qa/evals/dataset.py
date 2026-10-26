@@ -72,6 +72,8 @@ class EvalDataset(BaseModel):
         version: Dataset version; bump it when the cases change.
         table: Table file, relative to ``db-doc-qa/``; ``None`` is the bundled sample.
         docs: A folder or a list of files; ``None`` is the bundled samples, ``[]`` no documents.
+        state_file: A prebuilt session state (JSON) that replaces ``table`` and ``docs``;
+            written by ``evals.lakequest``, read by the runner in Phase 5.3.
         cases: The cases; their ids must be unique.
     """
 
@@ -81,6 +83,7 @@ class EvalDataset(BaseModel):
     version: int
     table: Path | None = None
     docs: Path | list[Path] | None = None
+    state_file: Path | None = None
     cases: list[EvalCase]
 
     @model_validator(mode="after")
