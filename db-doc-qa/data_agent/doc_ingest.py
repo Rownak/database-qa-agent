@@ -32,6 +32,7 @@ import numpy as np
 import semchunk
 from pypdf import PdfReader
 
+from data_agent.config import ChunkingConfig, EmbeddingConfig
 from data_agent.logs import get_logger
 
 log = get_logger(__name__)
@@ -40,11 +41,12 @@ DOCS_DB_FILENAME = "docs.db"
 SUPPORTED_EXTENSIONS = (".pdf", ".txt", ".md")
 MAX_DOC_BYTES = 1024 * 1024
 MAX_PAGES = 20
-CHUNK_WORDS = 160
-FALLBACK_OVERLAP = 0.15
-EMBED_MODEL = "gemini-embedding-001"
-EMBED_DIM = 768
-EMBED_BATCH = 100
+# Aliases of the config defaults, kept so existing imports and tests keep working.
+CHUNK_WORDS = ChunkingConfig().chunk_words
+FALLBACK_OVERLAP = ChunkingConfig().fallback_overlap
+EMBED_MODEL = EmbeddingConfig().model
+EMBED_DIM = EmbeddingConfig().dim
+EMBED_BATCH = EmbeddingConfig().batch
 SUMMARY_SECTIONS = 8  # top-level sections listed per document in ``docs_summary``
 
 TaskType = Literal["RETRIEVAL_DOCUMENT", "RETRIEVAL_QUERY"]
@@ -149,7 +151,7 @@ class _Heading:
     label: str  # e.g. "3.2 Express Shipments"
 
 
-def prepare(name: str, data: bytes) -> PreparedDoc | DocError:
+def prepare(name: str, data: bytes, chunking: ChunkingConfig | None = None) -> PreparedDoc | DocError:
     """Validates a document and splits it into structure-aware chunks.
 
     Validation runs in a fixed order and stops at the first failure: extension, size,
@@ -159,6 +161,7 @@ def prepare(name: str, data: bytes) -> PreparedDoc | DocError:
     Args:
         name: Original file name; its extension selects the reader.
         data: Raw file content.
+        chunking: Chunking settings; the defaults when ``None``.
 
     Returns:
         A :class:`PreparedDoc`, or a :class:`DocError` describing the first failure.
@@ -178,22 +181,24 @@ def prepare(name: str, data: bytes) -> PreparedDoc | DocError:
 
     doc_type = ext[1:]
     base = Path(name).name
-    return _chunk_document(base, doc_type, text, page_starts if doc_type == "pdf" else None)
+    return _chunk_document(base, doc_type, text, page_starts if doc_type == "pdf" else None, chunking or ChunkingConfig())
 
 
-def embed(texts: list[str], task_type: TaskType) -> np.ndarray | None:
-    """Embeds texts with ``gemini-embedding-001`` (768 dimensions, L2-normalised).
+def embed(texts: list[str], task_type: TaskType, embedding: EmbeddingConfig | None = None) -> np.ndarray | None:
+    """Embeds texts (default ``gemini-embedding-001``, 768 dimensions, L2-normalised).
 
     Args:
         texts: Strings to embed, sent in batches of up to 100.
         task_type: ``RETRIEVAL_DOCUMENT`` for chunks, ``RETRIEVAL_QUERY`` for queries.
+        embedding: Model, dimension and batch size; the defaults when ``None``.
 
     Returns:
-        A float32 array of shape ``(len(texts), 768)`` with unit-length rows, or ``None``
+        A float32 array of shape ``(len(texts), dim)`` with unit-length rows, or ``None``
         if the API call fails for any reason (a warning is logged without the texts).
     """
+    emb = embedding or EmbeddingConfig()
     if not texts:
-        return np.zeros((0, EMBED_DIM), dtype=np.float32)
+        return np.zeros((0, emb.dim), dtype=np.float32)
     try:
         from dotenv import load_dotenv
         from google import genai
@@ -201,15 +206,15 @@ def embed(texts: list[str], task_type: TaskType) -> np.ndarray | None:
 
         load_dotenv()  # local runs read GOOGLE_API_KEY from .env; Cloud Run sets it directly
         client = genai.Client()
-        config = types.EmbedContentConfig(task_type=task_type, output_dimensionality=EMBED_DIM)
+        config = types.EmbedContentConfig(task_type=task_type, output_dimensionality=emb.dim)
         vectors: list[list[float]] = []
-        for i in range(0, len(texts), EMBED_BATCH):
+        for i in range(0, len(texts), emb.batch):
             resp = client.models.embed_content(
-                model=EMBED_MODEL, contents=texts[i : i + EMBED_BATCH], config=config
+                model=emb.model, contents=texts[i : i + emb.batch], config=config
             )
             vectors.extend(e.values for e in resp.embeddings)
         arr = np.asarray(vectors, dtype=np.float32)
-        if arr.shape != (len(texts), EMBED_DIM):
+        if arr.shape != (len(texts), emb.dim):
             raise ValueError(f"unexpected embedding shape {arr.shape}")
     except Exception as exc:  # network, quota, auth, malformed response: all fall back to BM25
         log.warning("embedding failed (%s); documents will be searched with BM25 only", type(exc).__name__)
@@ -218,7 +223,22 @@ def embed(texts: list[str], task_type: TaskType) -> np.ndarray | None:
     return arr / np.where(norms == 0, 1.0, norms)
 
 
-def build(docs: list[dict], session_dir: str | Path) -> BuildResult:
+def embed_options(embedding: EmbeddingConfig | None) -> dict:
+    """Returns the ``embedding=`` keyword for :func:`embed`, or ``{}`` for the default settings.
+
+    Callers splat this into their ``embed`` call. Leaving the argument out for the default
+    keeps test doubles written as ``embed(texts, task_type)`` working.
+    """
+    return {"embedding": embedding} if embedding is not None and embedding != EmbeddingConfig() else {}
+
+
+def build(
+    docs: list[dict],
+    session_dir: str | Path,
+    *,
+    chunking: ChunkingConfig | None = None,
+    embedding: EmbeddingConfig | None = None,
+) -> BuildResult:
     """Prepares, embeds and indexes a session's documents into ``<session_dir>/docs.db``.
 
     Documents that fail validation are skipped and reported; the others stay usable. If
@@ -228,6 +248,8 @@ def build(docs: list[dict], session_dir: str | Path) -> BuildResult:
         docs: Session-state documents, each ``{"name": str, "b64": str}``.
         session_dir: Per-session directory; created if missing when there is something
             to write.
+        chunking: Chunking settings; the defaults when ``None``.
+        embedding: Embedding settings; the defaults when ``None``.
 
     Returns:
         A :class:`BuildResult`. ``docs_db_path`` is ``None`` when no document was usable.
@@ -245,7 +267,7 @@ def build(docs: list[dict], session_dir: str | Path) -> BuildResult:
         except (binascii.Error, ValueError):
             skipped[name] = "Could not read the document: invalid encoding."
             continue
-        result = prepare(name, raw)
+        result = prepare(name, raw, chunking)
         if isinstance(result, DocError):
             skipped[name] = result.message
             log.warning("skipped a document: %s", result.message.split(":")[0])
@@ -256,7 +278,7 @@ def build(docs: list[dict], session_dir: str | Path) -> BuildResult:
         return BuildResult(None, "No documents loaded", skipped)
 
     all_chunks = [(i, c) for i, d in enumerate(prepared, start=1) for c in d.chunks]
-    vectors = embed([_index_text(c) for _, c in all_chunks], "RETRIEVAL_DOCUMENT")
+    vectors = embed([_index_text(c) for _, c in all_chunks], "RETRIEVAL_DOCUMENT", **embed_options(embedding))
 
     db_path = _write_db(prepared, all_chunks, vectors, Path(session_dir))
     summary = "\n".join(_summary_line(d) for d in prepared)
@@ -446,7 +468,7 @@ def _title_like_headings(
 
 
 def _chunk_document(
-    name: str, doc_type: str, text: str, page_starts: list[int] | None
+    name: str, doc_type: str, text: str, page_starts: list[int] | None, chunking: ChunkingConfig
 ) -> PreparedDoc | DocError:
     """Builds the chunks of one document, structure-aware or by the fallback.
 
@@ -455,13 +477,14 @@ def _chunk_document(
         doc_type: ``pdf``, ``txt`` or ``md``.
         text: Extracted text of the whole document.
         page_starts: Start offset of each page, or ``None`` for TXT and MD.
+        chunking: Chunk size and fallback overlap.
 
     Returns:
         A :class:`PreparedDoc`, or a :class:`DocError` if no chunk could be made.
     """
     headings, title, body_start = _find_headings(text, doc_type)
     title = title or Path(name).stem
-    chunker = semchunk.chunkerify(lambda t: len(t.split()), CHUNK_WORDS)
+    chunker = semchunk.chunkerify(lambda t: len(t.split()), chunking.chunk_words)
 
     def pages_of(start: int, end: int) -> tuple[int | None, int | None]:
         if page_starts is None:
@@ -473,7 +496,7 @@ def _chunk_document(
 
     if not headings:
         method = "fallback"
-        for chunk_text, (s, e) in zip(*chunker(text, offsets=True, overlap=FALLBACK_OVERLAP)):
+        for chunk_text, (s, e) in zip(*chunker(text, offsets=True, overlap=chunking.fallback_overlap)):
             raw.append((title, "", 0, "", s, e, method))
     else:
         method = "structure"

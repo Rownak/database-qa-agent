@@ -237,7 +237,7 @@ def local():
 
 def _adk_state(app):
     sid = app.session_state.session_id
-    return app.session_state.adk.sessions["sheet_qa"]["user"][sid].state
+    return app.session_state.agent.adk.sessions["sheet_qa"]["user"][sid].state
 
 
 def test_local_mode_document_change_resets_session_and_deletes_old_docs_db(local):
@@ -272,7 +272,7 @@ def test_local_mode_collects_tool_responses_and_intent_from_events(local):
                 id="1", name="search_documents", response={"status": "success", "passages": []})))
             yield event(types.Part(text="Final answer."))
 
-    local.session_state.runner = FakeRunner()
+    local.session_state.agent.runner = FakeRunner()
     local.chat_input[0].set_value("q").run()
     assert not local.exception
     message = local.session_state.messages[-1]
@@ -291,6 +291,6 @@ def test_local_mode_reads_the_intent_from_the_session_when_no_delta_has_it(local
             yield Event(author="a", content=types.Content(role="model", parts=[types.Part(text="Hi")]))
 
     _adk_state(local)["intent"] = "database"
-    local.session_state.runner = FakeRunner()
+    local.session_state.agent.runner = FakeRunner()
     local.chat_input[0].set_value("q").run()
     assert local.session_state.messages[-1]["intent"] == "database"

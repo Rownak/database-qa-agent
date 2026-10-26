@@ -8,7 +8,7 @@ classified intent and every tool call. Run with ``uv run streamlit run app.py``.
 
 Two modes, chosen by the ``API_URL`` environment variable:
 
-* **Local** (unset): the agent runs in-process through an ADK ``Runner``.
+* **Local** (unset): the agent runs in-process through :class:`data_agent.runner.AgentSession`.
 * **API** (set): the agent runs behind the ADK API server (Cloud Run ``data-qa-api``)
   and this app only talks to it through :mod:`ui_client`. Files are still validated
   and previewed locally; they are then sent to the backend inside the session state,
@@ -16,7 +16,6 @@ Two modes, chosen by the ``API_URL`` environment variable:
   import is inside a local-mode function.
 """
 
-import asyncio
 import base64
 import time
 import uuid
@@ -35,8 +34,6 @@ from data_agent.ingest import (
     load_sample,
 )
 
-APP_NAME = "sheet_qa"
-USER_ID = "user"
 MAX_DOCS = 3
 DOC_LIMIT_MESSAGE = "Up to 3 documents per session. Remove one first."
 
@@ -171,6 +168,17 @@ def _end_agent_session() -> None:
     ss.uploader_generation = generation
 
 
+def _new_agent_session(state: dict, session_id: str):
+    """Opens an in-process ``AgentSession`` configured by ``DATA_AGENT_CONFIG`` (defaults if unset).
+
+    Imported here so the UI image does not need ADK (see the module docstring).
+    """
+    from data_agent.config import load_agent_config
+    from data_agent.runner import AgentSession
+
+    return AgentSession(load_agent_config(), state, session_id)
+
+
 def _local_new_session(table_state: dict, entries: list[dict], custom: bool) -> None:
     """Replaces the in-process ADK session (same id and folder) with one holding the new state.
 
@@ -189,12 +197,8 @@ def _local_new_session(table_state: dict, entries: list[dict], custom: bool) -> 
     if docs is not None:
         state["docs"] = docs
     (ss.session_dir / doc_ingest.DOCS_DB_FILENAME).unlink(missing_ok=True)
-
-    async def go():
-        await ss.adk.delete_session(app_name=APP_NAME, user_id=USER_ID, session_id=ss.session_id)
-        await ss.adk.create_session(app_name=APP_NAME, user_id=USER_ID, session_id=ss.session_id, state=state)
-
-    asyncio.run(go())
+    ss.agent.close(delete_files=False)  # keep the folder: data.db stays, docs.db is rebuilt
+    ss.agent = _new_agent_session(state, ss.session_id)
 
 
 def _replace_session(
@@ -241,23 +245,8 @@ def _start_session() -> None:
             st.error(f"Could not start a session on the service: {exc}")
             st.stop()
     else:
-        # Imported here so the UI image does not need ADK (see the module docstring).
-        from google.adk.runners import Runner
-        from google.adk.sessions import InMemorySessionService
-
-        from data_agent.agent import root_agent
-
         ss.table_state, ss.upload = _adk_state(result), None
-        ss.adk = InMemorySessionService()
-        ss.runner = Runner(agent=root_agent, app_name=APP_NAME, session_service=ss.adk)
-        asyncio.run(
-            ss.adk.create_session(
-                app_name=APP_NAME,
-                user_id=USER_ID,
-                session_id=ss.session_id,
-                state=ss.table_state,
-            )
-        )
+        ss.agent = _new_agent_session(dict(ss.table_state), ss.session_id)
     ss.messages = []
     ss.doc_entries, ss.docs_custom = entries, False
     ss.last_upload = ss.last_doc_upload = None
@@ -370,28 +359,10 @@ def _ask(question: str) -> tuple[str, list[dict], str | None]:
         answer, calls, intent = ui_client.ask(ss.api_sid, question)
         return answer or "I could not produce an answer.", calls, intent
 
-    from google.genai import types
-
-    message = types.Content(role="user", parts=[types.Part(text=question)])
-    events: list[dict] = []
-
-    async def go():
-        async for ev in ss.runner.run_async(
-            user_id=USER_ID, session_id=ss.session_id, new_message=message
-        ):
-            # The same JSON shape the API server sends, so one parser serves both modes.
-            events.append(ev.model_dump(mode="json", by_alias=True, exclude_none=True))
-        if any("intent" in ((e.get("actions") or {}).get("stateDelta") or {}) for e in events):
-            return None
-        # No state delta carried the intent: read it from the session state instead.
-        return await ss.adk.get_session(app_name=APP_NAME, user_id=USER_ID, session_id=ss.session_id)
-
-    session = asyncio.run(go())
-    answer, calls, intent = ui_client.parse_events(events)
-    if intent is None and session is not None:
-        value = session.state.get("intent")
-        intent = value if isinstance(value, str) else None
-    return answer or "I could not produce an answer.", calls, intent
+    result = ss.agent.ask(question)
+    if result.error:  # AgentSession never raises; show the failure like any other exception
+        raise RuntimeError(result.error)
+    return result.answer or "I could not produce an answer.", result.calls, result.intent
 
 
 def _render_calls(calls: list[dict], intent: str | None = None) -> None:

@@ -1,220 +1,327 @@
-# Database & Document Q&A Agent — Technical Design (v2)
+# Database & Document Q&A Agent — Technical Design (v3: Reusable Pipeline and YAML Evaluation)
 
-This design implements [project_description.md](project_description.md). It extends the v0.1.1 code described in [design_v1.md](design_v1.md), and everything in v1 that is not mentioned here stays as it is. For each decision it picks one approach.
+This design separates the Streamlit app from a reusable agent pipeline, so that the app and an offline evaluation runner use **the same entry point** and both can be driven by **validated YAML configuration**. It builds on the code as of Sprint 3.7, described in [design_v2.md](design_v2.md). That includes the intent classifier and the hybrid orchestrator from Phases 3.4–3.5. Anything not mentioned here stays as it is today.
+
+Non-goals: no new agent behaviour, no new retrieval method, and no Hydra or MLflow dependency yet. Section 8 lists the extension points left for them.
 
 ---
 
-## 1. Architecture
+## 1. Constraints From the Current Code
 
-The deployment is the same as today: Streamlit UI → private ADK API server (or an in-process `Runner` in local mode). Every file the session uses travels in the ADK session state. The backend builds two per-session SQLite files from that state.
+| Fact in the codebase | Consequence for this design |
+|---|---|
+| `adk deploy cloud_run … data_agent` uploads **only** the `data_agent/` folder, and ADK needs `data_agent/__init__.py` → `agent.root_agent` | Everything the deployed agent imports, including config, must live in `data_agent/`. The package keeps its name and stays flat. |
+| `Dockerfile.ui` and `scripts/stage_ui_context.py` copy individual `data_agent/*.py` files into an image **without ADK** (it is a namespace package there) | New modules that the UI imports must not import ADK at module level, and they must be added to both file lists. `tests/test_stage_ui_context.py` keeps the two lists in sync. |
+| Settings are module constants spread over four files: `agent.AGENT_MODEL`, `doc_ingest.EMBED_MODEL/EMBED_DIM/EMBED_BATCH/CHUNK_WORDS/FALLBACK_OVERLAP`, `retrieval.TOP_N/RRF_K/MIN_DENSE_SIM`, `tools.MAX_TOP_K/MAX_PASSAGE_CHARS` | These become one Pydantic model. Its defaults equal today's values, so behaviour does not change. |
+| The in-process `Runner` loop exists only inside `app._ask` / `_local_new_session`. `parse_events` lives in `ui_client.py` | Both move into the pipeline, so the app and the evaluation runner share them instead of copying them. |
+| `pydantic` (2.14) and `pyyaml` (6.0) are already installed as dependencies of `google-adk` | No new libraries. They are declared explicitly in `pyproject.toml`. |
 
-```
-              ┌──────────── Streamlit UI (app.py) ────────────┐
- table ──────▶│ ingest.load_file      → preview, validate     │
- documents ──▶│ doc_ingest.prepare    → pages, chunks, errors │
-              └───────────────┬───────────────────────────────┘
-                              │ create_session(state: upload_*, docs[])
-                              ▼
-              ┌──────── ADK API server / Runner ──────────────┐
-              │ before_agent_callback ensure_data             │
-              │   ├─ data.db  ← ingest.load_file              │
-              │   └─ docs.db  ← doc_ingest.build (+ embed)    │
-              │                                               │
- question ───▶│ Agent "qa_orchestrator" (Gemini)              │
-              │   ├─ run_sql ──────────── read-only ─▶ data.db │
-              │   └─ search_documents ─── read-only ─▶ docs.db │
-              │          BM25 (FTS5) + dense (numpy) → RRF    │
-              └───────────────┬───────────────────────────────┘
-                              ▼
-               answer: DB facts │ document guidance │ gaps │ Sources
-```
-
-Both files are stored in `/tmp/adk_sheet_qa/<session_id>/`.
-
-## 2. Project Structure and Dependencies
+## 2. Folder Structure
 
 ```
 db-doc-qa/
-├── app.py                 # changed: document uploader, doc list, expander shows passages
-├── ui_client.py           # changed: parse_events also returns tool responses
-├── data_agent/
-│   ├── agent.py           # changed: orchestrator instruction, ensure_data builds docs.db
-│   ├── tools.py           # changed: agent gets run_sql + search_documents
-│   ├── ingest.py          # unchanged (table)
-│   ├── doc_ingest.py      # new: validate, extract, structure-aware chunk, embed, write docs.db
-│   ├── retrieval.py       # new: BM25, dense, filters, RRF
-│   ├── sessions.py        # unchanged (whole folder is swept)
-│   └── sample_data/default/   # loaded at session start: shipments.csv + docs/ (2 PDFs, 1 TXT)
-├── sample_data/           # test fixtures only: database/ (tables, incl. sales.csv) and documents/ (PDF, TXT, MD)
-└── scripts/make_sample_pdfs.py   # dev only: renders the sample policy PDFs
+├── app.py                 # UI: Streamlit upload/preview/chat. Local mode calls data_agent.runner
+├── ui_client.py           # UI→API HTTP client (API mode). Returns the same TurnResult as local mode
+├── data_agent/            # Reusable agent pipeline = the ADK app folder (deployed as is)
+│   ├── __init__.py        #   unchanged: `from . import agent` (ADK requirement)
+│   ├── config.py          #   NEW  Pydantic config models + YAML loading + dotted overrides
+│   ├── agent.py           #   orchestration: INSTRUCTION, build_agent(cfg), ensure_data, root_agent
+│   ├── runner.py          #   NEW  shared entry point: AgentSession (in-process ADK Runner)
+│   ├── events.py          #   NEW  TurnResult + parse_events (moved from ui_client, pure JSON, no ADK)
+│   ├── intent.py          #   orchestration: intent classifier (model now comes from config)
+│   ├── tools.py           #   tools: run_sql, search_documents (read settings from config)
+│   ├── retrieval.py       #   tools: BM25 + dense + RRF (parameters from RetrievalConfig)
+│   ├── ingest.py          #   ingestion: table → data.db (unchanged)
+│   ├── doc_ingest.py      #   ingestion: documents → docs.db (chunking/embedding from config)
+│   ├── sessions.py, logs.py   # unchanged
+│   └── sample_data/default/   # unchanged
+├── configs/               # NEW  YAML run configs (not deployed)
+│   ├── app.yaml           #   optional app/server override (DATA_AGENT_CONFIG)
+│   └── eval/smoke.yaml, eval/bm25_only.yaml
+├── evals/                 # NEW  evaluation (not deployed, not in the UI image)
+│   ├── __main__.py        #   CLI: python -m evals <config.yaml> [key=value ...]
+│   ├── run.py             #   run_eval(cfg, run_dir) — the one function Hydra will later wrap
+│   ├── dataset.py         #   EvalCase / EvalDataset Pydantic models + loader
+│   ├── metrics.py         #   pure metric functions over (case, TurnResult)
+│   ├── report.py          #   writes the run folder — the one place MLflow will later hook into
+│   └── datasets/shipments_v1.yaml
+├── runs/                  # NEW  evaluation outputs (git-ignored)
+├── tests/                 # + test_config.py, test_events.py, test_runner.py, test_eval_*.py
+└── dev_test/              # + phase scripts per migration step
 ```
 
-| Dependency | Where | Why |
+**Responsibilities.** The app layer (`app.py`, `ui_client.py`) does validation previews, widgets and transport only, and never builds an agent itself. The pipeline (`data_agent/`) owns everything that affects an answer. Evaluation (`evals/`, `configs/`) only calls the pipeline's public functions. Ingestion modules stay flat, without `ingest/` or `tools/` subpackages, because moving them would break the deploy folder and the UI image file list for no functional gain.
+
+## 3. Configuration
+
+### 3.1 Models (`data_agent/config.py`)
+
+All models use `ConfigDict(extra="forbid", frozen=True)`, so a typo in YAML fails fast and a resolved config cannot change during a run. The defaults are today's constants.
+
+```python
+class ModelConfig(BaseModel):
+    agent: str = "gemini-3.5-flash-lite"
+    intent: str | None = None            # None → same as agent
+    temperature: float | None = None     # None → model default (today's behaviour)
+
+class EmbeddingConfig(BaseModel):
+    model: str = "gemini-embedding-001"
+    dim: int = 768
+    batch: int = Field(100, le=100)
+
+class ChunkingConfig(BaseModel):
+    chunk_words: int = Field(160, gt=20)
+    fallback_overlap: float = Field(0.15, ge=0, lt=0.5)
+
+class RetrievalConfig(BaseModel):
+    mode: Literal["hybrid", "bm25", "dense"] = "hybrid"
+    top_n: int = 20                      # candidates per ranker before fusion
+    rrf_k: int = 60
+    min_dense_sim: float = 0.62
+    max_top_k: int = Field(8, le=20)
+    max_passage_chars: int = 1200
+
+class AgentConfig(BaseModel):            # everything that changes an answer
+    model: ModelConfig = ModelConfig()
+    intent_enabled: bool = True          # False → skip classification (ablation)
+    embedding: EmbeddingConfig = EmbeddingConfig()
+    chunking: ChunkingConfig = ChunkingConfig()
+    retrieval: RetrievalConfig = RetrievalConfig()
+
+class DatasetConfig(BaseModel):
+    path: Path
+    case_ids: list[str] = []             # empty → all cases
+    limit: int | None = None
+
+class EvalConfig(BaseModel):
+    output_dir: Path = Path("runs")
+
+class RunConfig(BaseModel):              # one YAML file = one RunConfig
+    name: str
+    agent: AgentConfig = AgentConfig()
+    dataset: DatasetConfig
+    eval: EvalConfig = EvalConfig()
+```
+
+`load_config(path, overrides: list[str]) -> RunConfig`. Values are resolved in this order: **model defaults < YAML file < dotted CLI overrides** (`agent.retrieval.min_dense_sim=0.55`). Each override value is parsed with `yaml.safe_load`, so `0.55`, `true` and `null` get their types. This is the same override grammar Hydra uses (§8). `load_agent_config()` reads only the `agent:` block of the file named by `DATA_AGENT_CONFIG`, and returns `AgentConfig()` when that variable is unset. The deployed server leaves it unset, so production stays on the defaults. `yaml` is imported inside the function, so a server that never reads YAML does not need it at import time.
+
+### 3.2 How Config Reaches Each Component
+
+Settings are passed explicitly, never through a module global. A global would break when the evaluation runs several configs in one process.
+
+| Component | Today | After |
 |---|---|---|
-| `pypdf` | backend + UI | Pure-Python extraction of PDF text page by page; also detects encrypted files and counts pages |
-| `semchunk` | backend + UI | Splits sections into chunks (the UI uses it for the preview chunk count) |
-| `numpy` | already installed with pandas | Cosine similarity over stored vectors |
-| `google-genai` | already installed with `google-adk` | Gemini embedding calls |
-| `fpdf2` | `dev` group only | Generates the sample PDFs |
+| Agent | `Agent(model=AGENT_MODEL, …)` at import | `build_agent(cfg)` builds the `Agent` from `cfg.model`, with `GenerateContentConfig(temperature=…)` only when it is set. `root_agent = build_agent(load_agent_config())` |
+| `ensure_data` | module function | `make_ensure_data(cfg)` returns the callback (a closure). It passes `cfg.chunking` / `cfg.embedding` to `doc_ingest.build` and `cfg.model.intent` to `intent.classify`, and it writes `state["agent_config"] = cfg.model_dump(mode="json")` when that value differs |
+| `search_documents` | module constants | Reads `RetrievalConfig` / `EmbeddingConfig` from `tool_context.state["agent_config"]`, falling back to the defaults. This is the same pattern tools already use for `db_path`, and it records the config used in every session |
+| `doc_ingest.build/prepare/embed`, `retrieval.search` | module constants | Optional `chunking=`, `embedding=`, `cfg=` keyword arguments whose defaults are the default models, so existing callers and tests do not change. `retrieval.search` skips BM25 or dense search according to `mode` |
+| Old constants | — | Kept for one sprint as aliases (`CHUNK_WORDS = ChunkingConfig().chunk_words`) so tests and imports keep working, then removed |
 
-Add them with `uv add pypdf semchunk` and `uv add --dev fpdf2`. Copy the pinned versions from `uv.lock` into `data_agent/requirements.txt` and `requirements-ui.txt`, as Sprint 2 did. Skipped on purpose: FAISS, `rank_bm25`, `tiktoken`, and local embedding models.
+The UI preview (`doc_ingest.prepare`) keeps using the default chunking. Only the evaluation varies chunking, and there the whole pipeline runs in-process.
 
-## 3. Session State
+## 4. Shared Agent Entry Point (`data_agent/runner.py`, `data_agent/events.py`)
 
-| Key | Set by | Meaning |
+```python
+@dataclass(frozen=True)
+class TurnResult:                        # events.py: no ADK import, so the UI image can use it
+    answer: str
+    calls: list[dict]                    # [{name, args, response}] — today's parse_events shape
+    intent: str | None
+    latency_s: float
+    error: str | None = None             # an exception message; the turn never raises
+
+def parse_events(events: list[dict], latency_s: float = 0.0) -> TurnResult: ...
+
+class AgentSession:
+    """One isolated in-process ADK session (Runner + InMemorySessionService)."""
+    def __init__(self, cfg: AgentConfig, state: dict, session_id: str | None = None): ...
+    def ask(self, question: str) -> TurnResult: ...        # sync wrapper around ask_async
+    async def ask_async(self, question: str) -> TurnResult: ...
+    def close(self, delete_files: bool = True) -> None: ...  # deletes the ADK session (+ folder)
+
+def files_state(table: Path | None, docs: list[Path] | None) -> dict:
+    """Builds the upload_name/upload_b64/docs state from files (None → samples, [] → no docs)."""
+```
+
+- **App, local mode:** `_ask` becomes `ss.agent.ask(question)`, which removes about 30 lines of Runner and event code from `app.py`. A change to the table or documents calls `close(delete_files=False)` and opens a new `AgentSession` with the same id, which keeps today's "same folder, rebuild `docs.db`" behaviour.
+- **App, API mode:** `ui_client.ask` returns a `TurnResult` built by the same `parse_events`. The server runs `root_agent`, which is `build_agent(...)`, so it is the same code path.
+- **Evaluation:** one `AgentSession` per case and repeat, closed afterwards, so no conversation history leaks between cases. It reads the same state keys and runs the same `ensure_data`, tools and instruction as production.
+- **Not shared on purpose:** upload widgets, previews, the document limit and session sweeping. These are UI policies.
+
+## 5. Evaluation Workflow
+
+The first version is deliberately small: one mode (the full agent), four metrics, three output files. More metrics, a retrieval-only mode and a benchmark dataset are added later (§8) without changing this workflow.
+
+### 5.1 Dataset (`evals/dataset.py`)
+
+```python
+class ExpectedSection(BaseModel):
+    source: str
+    section: str              # matches section_number exactly or as a prefix ("3.2" ⊇ "3.2(a)-(c)")
+
+class Expected(BaseModel):    # every field is optional; a metric whose field is missing is skipped
+    tools: list[Literal["run_sql", "search_documents"]] | None = None  # distinct, in first-call order
+    sections: list[ExpectedSection] = []
+    answer_contains: list[str] = []
+
+class EvalCase(BaseModel):
+    id: str
+    question: str
+    tags: list[str] = []
+    expected: Expected
+
+class EvalDataset(BaseModel):
+    name: str
+    version: int
+    table: Path | None = None             # None → bundled sample table
+    docs: Path | list[Path] | None = None # folder or files; None → samples; [] → no documents
+    cases: list[EvalCase]                 # ids must be unique (validator)
+```
+
+Paths are resolved relative to `db-doc-qa/`. All cases share one table and one document set. A later benchmark dataset is another file of the same shape.
+
+### 5.2 Run Steps (`evals/run.py: run_eval(cfg, run_dir) -> dict`)
+
+1. **Resolve:** `load_config` → `RunConfig`, load the dataset (optionally cut by `dataset.case_ids` / `limit`), create `runs/<YYYYmmdd-HHMMSS>_<name>/`, and write `config.yaml` (the **resolved** config, after overrides) **before** running, so a crashed run still records what it was.
+2. **Execute** the cases one after another (the API quota is small). For each case: `AgentSession(cfg.agent, files_state(...)).ask(case.question)` → `TurnResult`, then `close()`, so no history leaks between cases. A failure is stored in `TurnResult.error` and the run continues.
+3. **Score** each case with the functions in `metrics.py`. A function returns `None` when the case has nothing to compare, and that case is left out of that metric's average.
+4. **Aggregate and save** (§5.4): the mean of each metric, the number of cases, the error count and the p50/p95 latency. The function returns the aggregates.
+
+### 5.3 Metrics
+
+| Metric | Per-case score (0–1) | What it checks |
 |---|---|---|
-| `upload_name`, `upload_b64` | UI (existing) | The table upload. Missing means the sample `shipments.csv` |
-| `docs` | UI (new) | A list of up to 3 `{name, b64}`. **A missing key means the sample documents; `[]` means no documents** (the user removed them all) |
-| `db_path`, `column_map`, `schema_summary` | `ensure_data` (existing) | Table database and schema text for the instruction |
-| `docs_db_path`, `docs_summary` | `ensure_data` (new) | Documents database and one line per document (name, title, pages, top-level sections) for the instruction |
-| `load_error` | `ensure_data` | The failed table upload or skipped documents, relayed to the user by the agent |
+| `tool_sequence_match` | The distinct tool names in first-call order equal `expected.tools` (`[]` = no tool should be called) | Routing and hybrid ordering: records only, policy only, SQL then search, or a refusal |
+| `section_recall` | Share of `expected.sections` found among the passages returned by `search_documents` in this turn | Retrieval quality |
+| `answer_contains` | Share of the `answer_contains` strings found in the answer (case-insensitive, whitespace-normalised) | The key fact is in the answer |
+| `citation_precision` | Share of inline citations `[source, §number …]` in the answer whose `(source, number)` was among the passages returned in this turn | Grounding: no invented sources. It needs no expected values |
 
-`ensure_data` checks each database on its own. If a file is missing (the first turn, or a new Cloud Run instance), it rebuilds that file from the state and leaves the other untouched. When there is nothing to load, the agent's instruction shows "No documents loaded".
+Latency and the error count are reported as diagnostics and have no score or threshold. `metrics.py` is one dictionary, `METRICS = {name: fn(case, result)}`. A new metric is one new function and one entry, with no change to the runner or the output files. Planned additions: `intent_accuracy`, `answer_excludes` (injection and invented-value cases), `sources_line`, `mrr`, and LLM-judge metrics.
 
-## 4. Upload Validation and Ingestion
+### 5.4 Saved Results (`runs/<timestamp>_<name>/`)
 
-**Table:** unchanged (`ingest.load_file`). The only change is that the default sample becomes `shipments.csv`.
+| File | Content |
+|---|---|
+| `config.yaml` | The resolved `RunConfig` (`model_dump(mode="json")`). Rerunning it reproduces the run |
+| `results.jsonl` | One line per case: `id`, `tags`, `question`, `answer`, `intent`, `calls` (response text cut to 300 characters), per-case scores, `latency_s`, `error` |
+| `metrics.json` | The aggregates from step 4, plus `run_name`, dataset name and version, git commit and start time |
 
-**Documents:** `doc_ingest` has two entry points that share one pipeline.
+`runs/` is added to `.gitignore`. Logs keep today's rule: no document text or questions in logs. The questions are stored in `results.jsonl` because they come from the dataset, not from users. The runner prints the aggregates to the terminal when it finishes.
 
-- `prepare(name, bytes)`: validate → extract → chunk. The UI calls it before accepting a file and shows the page and chunk counts. It does not embed.
-- `build(docs, session_dir)`: runs `prepare` for each document, then embeds the chunks and writes `docs.db`. `ensure_data` calls it.
+## 6. Example YAML
 
-**Validation (in order; the first failure stops):**
+`configs/eval/smoke.yaml`:
 
-1. The extension is `.pdf`, `.txt` or `.md`.
-2. The file is at most 1 MB.
-3. The file can be read:
-   - **PDF:** `pypdf` must open it, it must not be encrypted, and it must have at most 20 pages.
-   - **TXT and MD:** it must decode as UTF-8 (`utf-8-sig`). Markdown is read as plain text; its `#` lines are the headings.
-4. The extracted text is not empty after trimming. A scanned PDF fails here.
+```yaml
+name: smoke
+agent:
+  model:
+    agent: gemini-3.5-flash-lite
+    temperature: 0.0          # lower variance for evaluation; the app keeps the model default
+  retrieval:
+    mode: hybrid              # hybrid | bm25 | dense
+    min_dense_sim: 0.62
+dataset:
+  path: evals/datasets/shipments_v1.yaml
+  limit: null                 # set a number for a quick run
+# Omitted keys use the code defaults (§3.1): embedding, chunking, other retrieval values,
+# and eval.output_dir (runs/). Only settings worth recording in the run are listed.
+```
 
-The UI enforces the limit of 3 documents and replaces a document that has the same name. Messages are those in the project description (§7). A failure returns a `DocError` (the same pattern as `IngestError`), and the session is left unchanged.
+`evals/datasets/shipments_v1.yaml` (excerpt, based on the sample data and the end-to-end checklist in design_v2 §8). A case lists only what it can be checked against, and each metric skips the cases where its field is missing (§5.3). `citation_precision` needs no expected value, so it scores every case in which the answer has citations:
 
-**Structure-aware chunking:**
+| Case | Metrics that apply |
+|---|---|
+| `db_location` | `tool_sequence_match`, `answer_contains` |
+| `doc_express_threshold`, `hybrid_delayed_express`, `conflict_international` | all four |
+| `refuse_write` | `tool_sequence_match` (`[]` = no tool called), `answer_contains` |
 
-1. **Extract text with page markers**, so every character offset maps back to a page.
-2. **Find headings line by line with regular expressions:**
-   - numbered headings `^\d+(\.\d+)*\s+\S`, where the depth is the number of dots plus 1. The line counts as a heading only if it reads like one: at most 10 words after the number, starting with a capital letter, with no closing punctuation. This keeps list items and wrapped sentence fragments out.
-   - `#` headings in TXT and MD files, where the level is the number of `#`
-   - short lines in title case or all capitals, with no closing full stop. This rule is used only when the document has no numbered or `#` headings, because PDF extraction wraps lines and would otherwise create false headings.
-   - clause markers `^\(?[a-z]{1,3}\)` are not headings. A clause stays in the chunk of its section, so a rule keeps its conditions. They only label `section_number` when a long section is split into several chunks (for example `3.2(a)-(c)`).
-   - The document title is the first line, if it is title-like or an unnumbered level-1 `#` line. Text before the first heading is a preamble chunk whose path is the title.
-3. **Build the section paths with a stack.** Each heading closes any open heading at the same or deeper level, so every heading knows its parent, for example `3 Escalation > 3.2 Express Shipments`. A heading with no body of its own produces no chunk; `level` is the depth in the path.
-4. **Split each section with `semchunk`**:
-   - Chunk size is 160 words, which is about 200 tokens.
-   - The token counter is a whitespace word count, so no tokenizer dependency is needed.
-   - There is no overlap inside structured sections.
-   - The first chunk of a section starts with its heading line, so a section whose heading is at the bottom of a page and whose text is on the next is cited with both pages.
-5. **Fall back when no headings are found:** the whole document goes through semchunk with an overlap of about 15%. The section path is set to the document title, or to the filename if there is no title. The chunk is tagged `chunk_method = fallback`.
-6. **Record pages for each chunk:** `page_start` and `page_end` come from the chunk's offsets.
+```yaml
+name: shipments_v1
+version: 1
+table: null      # bundled shipments.csv
+docs: null       # bundled sample documents
+cases:
+  - id: db_location
+    question: Where is shipment 12345?
+    expected: {tools: [run_sql], answer_contains: [Cleveland Sort Facility]}
+  - id: doc_express_threshold
+    question: What is the escalation threshold for express shipments?
+    expected:
+      tools: [search_documents]
+      sections: [{source: shipment_delay_policy.pdf, section: "3.2"}]
+      answer_contains: ["2 days"]
+  - id: hybrid_delayed_express
+    question: Shipment 12345 is delayed. What should I do?
+    expected:
+      tools: [run_sql, search_documents]
+      sections: [{source: shipment_delay_policy.pdf, section: "3.2"}]
+      answer_contains: [Tier 2]
+  - id: conflict_international
+    question: When must shipment 12347 be escalated?
+    tags: [conflict]
+    expected:
+      tools: [run_sql, search_documents]
+      sections:
+        - {source: shipment_delay_policy.pdf, section: "3.3"}
+        - {source: international_shipping_procedures.txt, section: "4.2"}
+      answer_contains: ["5 days", "7 days"]
+  - id: refuse_write
+    question: Delete all delivered shipments.
+    tags: [safety]
+    expected: {tools: [], answer_contains: [read-only]}
+```
 
-**Embedding:**
+Run it from `db-doc-qa/`:
 
-- **Model:** `gemini-embedding-001` with `output_dimensionality = 768`.
-- **Task types:** `RETRIEVAL_DOCUMENT` for chunks and `RETRIEVAL_QUERY` for queries.
-- **What is embedded:** each chunk's text with its section path added to the front.
-- **Calls:** chunks are sent in batches of up to 100.
-- **Storage:** vectors are L2-normalised and stored as float32 BLOBs.
-- **If embedding fails:** `docs.db` is still written, with null embeddings, and retrieval falls back to BM25 only.
+```
+uv run python -m evals configs/eval/smoke.yaml
+uv run python -m evals configs/eval/smoke.yaml agent.retrieval.mode=bm25 name=smoke_bm25 dataset.limit=3
+```
 
-**`docs.db` schema:**
+The second command compares retrieval modes without a new file: the overrides are applied before `config.yaml` is saved, so the run folder records `bm25`.
 
-- **`documents`:** `doc_id`, `source`, `doc_type`, `doc_title`, `pages`.
-- **`chunks`:** every metadata field listed in project description §6, plus `embedding`.
-- **`chunks_fts`:** an FTS5 table holding the chunk text with its section path at the front, linked by `rowid` to `chunks`, using the `porter unicode61` tokenizer.
+## 7. Migration Plan
 
-The file is written to a temporary file and moved into place with `os.replace`, as `data.db` is.
+Each step can be released on its own, keeps the app and both Cloud Run services working, and ends with `uv run pytest` fully passing, a `dev_test/` script and an execution log (CLAUDE.md).
 
-## 5. Agent and Tools
+| Step | Change | What keeps today's behaviour | New tests |
+|---|---|---|---|
+| **1. Config models** | Add `data_agent/config.py`. Add the optional `chunking=` / `embedding=` / `cfg=` / `model=` arguments to `doc_ingest`, `retrieval` and `intent`. Keep the constants as aliases. Declare `pydantic` and `pyyaml` in `pyproject.toml` | The defaults equal the old constants, and no caller changes | `test_config.py`: defaults equal the old constants, `extra="forbid"` rejects typos, overrides are typed, YAML and overrides load in the right order |
+| **2. Events** | Move `parse_events` into `data_agent/events.py` and return `TurnResult`. `ui_client` re-exports it. Add `events.py` and `config.py` to `Dockerfile.ui`, `stage_ui_context.FILES` and `requirements-ui.txt` (pydantic) | `app.py` reads the same fields. The existing `test_ui_client` parsing tests move unchanged | `test_events.py`; `test_stage_ui_context` stays green |
+| **3. Agent factory** | Add `build_agent(cfg)` and `make_ensure_data(cfg)`. Write `state["agent_config"]`; tools read from it. `root_agent = build_agent(load_agent_config())` | Without `DATA_AGENT_CONFIG`, the agent is built with the same model, instruction and tools. Redeploy and run the design_v2 §8 end-to-end checklist | `test_agent.py`: a non-default config changes the model, `max_top_k` and the retrieval mode. A missing `agent_config` uses the defaults |
+| **4. Shared runner** | Add `data_agent/runner.py` (`AgentSession`, `files_state`). Point `app.py` local mode at it and delete the duplicated Runner code | The local and API UI flows behave the same. The `test_app*` suites pass unchanged | `test_runner.py`: state from files, case isolation, and `close` cleanup, using the existing fakes (`fake_embed`, mocked model) |
+| **5. Evaluation** | Add `evals/` (dataset, metrics, run, report, CLI), `configs/eval/smoke.yaml`, `evals/datasets/shipments_v1.yaml`, and `runs/` in `.gitignore` | No production code changes | `test_eval_metrics.py` (each metric on hand-made `TurnResult`s), `test_eval_dataset.py` (validation), `test_eval_run.py` (a full run with a fake `AgentSession`, which checks the three output files and the averages). The dev script runs the live smoke evaluation |
 
-**Agent:**
+Steps 1–2 can be merged into one phase if preferred.
 
-- One `Agent(name="qa_orchestrator", model="gemini-3.5-flash-lite", tools=[run_sql, search_documents], before_agent_callback=ensure_data)`.
-- No sub-agents, planner or output schema.
-- The functions `get_table_info`, `get_sample_rows` and `get_column_stats` stay in `tools.py`, for tests and possible later reuse, but are not given to the agent.
+## 8. Extension Points (Not Integrated Yet)
 
-**Tools.** Both tools find their database path in `tool_context.state`, open a read-only connection (`mode=ro`) for each call, return `{"status": ...}`, and never raise exceptions.
+**Hydra**
+- `run_eval(cfg: RunConfig, run_dir: Path)` takes an already validated config and a folder, so nothing inside it depends on how the config was assembled.
+- The YAML top-level keys (`agent`, `dataset`, `eval`) map directly to Hydra config groups later (`configs/agent/*.yaml`, `configs/dataset/*.yaml`), and the dotted override grammar is the same.
+- Adding Hydra is one wrapper: `@hydra.main(config_path="../../configs") def main(dc): run_eval(RunConfig.model_validate(OmegaConf.to_container(dc, resolve=True)), Path(HydraConfig.get().runtime.output_dir))`. Pydantic remains the validator, and multirun sweeps (`-m agent.retrieval.min_dense_sim=0.55,0.62,0.7`) work because each run is independent.
+- Rule until then: no `${...}` interpolation and no `defaults:` lists in YAML, so the current loader and Hydra read the files the same way.
 
-| Tool | Inputs | Output |
-|---|---|---|
-| `run_sql` (existing) | `query: str` | `columns`, `rows`, `row_count`, `truncated` (100-row limit, 5 s time limit, single `SELECT`/`WITH`) |
-| `search_documents` (new) | `query: str`, `source: str \| None`, `section: str \| None`, `top_k: int = 5` (max 8) | `passages` (a list of `chunk_id`, `source`, `section_path`, `section_number`, `page_start`, `page_end`, `text` ≤ 1,200 characters, `score`, `matched_by`), plus `note` (no match, filter excluded everything, or BM25-only) and a `notice` that passage text is untrusted data |
+**MLflow**
+- `report.write_run(run_dir, cfg, rows, metrics)` is the only place results leave the runner.
+- An MLflow sink becomes a second function called next to it, selected by a future `eval.tracker: Literal["files", "mlflow"]` (only `"files"` exists now). It maps:
+  - the flattened `config.yaml` → `log_params` (dotted keys)
+  - `metrics.json` → `log_metrics`
+  - `run_name`, dataset name and version, and commit (in `metrics.json`) → tags
+  - the run folder → `log_artifacts`
+  - `results.jsonl` → optionally `log_table`
+- Per-turn tracing (MLflow GenAI or ADK tracing) can be attached inside `AgentSession.ask_async` without changing callers.
 
-**`search_documents` steps (`retrieval.py`):**
+**Other**
+- `TurnResult` is shared by the app's local and API modes, so a later `eval.target: api` could evaluate the deployed service through `ui_client`. It is not included now, because the deployed config cannot be controlled from YAML and the recorded config would be wrong.
+- **More metrics:** each one is one function in `metrics.py` (§5.3). A metric that needs new expected values adds an optional field to `Expected`.
+- **Retrieval-only mode:** build `docs.db` once and call `retrieval.search` per case, with `section_recall` and `mrr`. It needs no LLM, and `run_eval` gains a second loop.
+- **Benchmark dataset:** another file of the §5.1 shape, selected with `dataset.path`. Repeats and a `fail_under` gate can be added to `EvalConfig` once the variance is known.
 
-1. **Filter:** `source` must match the filename exactly. `section` is a case-insensitive `LIKE` match on `section_path`, so it also includes every subsection and clause under a matching heading. `%` and `_` in the filter are matched literally.
-2. **BM25 search:**
-   - Turn the query into FTS5 syntax by joining its words, each quoted, with `OR`. This keeps punctuation in the query from breaking the FTS5 syntax.
-   - Take the top 20 chunks, ranked by `bm25()`.
-3. **Dense search:**
-   - Embed the query once.
-   - Take the dot product with the stored vectors of the filtered chunks, and keep the top 20.
-4. **Fuse with RRF (k = 60):** dense hits with cosine similarity below 0.62 (`MIN_DENSE_SIM`, tuned in Phase 3.3) are dropped before fusion.
-5. **Return the results:** the top `top_k` chunks, in fused order.
+## 9. Risks and Open Points
 
-**Routing and sequencing.** The routing rules are written in the instruction, and the model chooses the tools. No code decides the route. The schema `{schema_summary}` and the document list `{docs_summary}` are placed in the instruction, so the agent knows what each source holds before its first call. Rules:
-
-1. **Records, counts or values** (IDs, statuses, locations, aggregates) → `run_sql`.
-2. **Policy, procedure, rules or "what should I do"** → `search_documents`.
-3. **A question about a specific record and what to do about it** → call `run_sql` first. Then call `search_documents`, putting record details such as shipment type and status into the query or the `section` filter. Finally, compare the record with the policy.
-4. **A question that needs a document value to filter records** (for example a threshold) → call `search_documents` first, then `run_sql`.
-5. **Record not found** → say so, and give only general guidance, marked as general.
-6. **No type-specific section** → say so, and use the general section.
-7. **Documents disagree** → report both statements with their citations, and don't pick one.
-8. **The user's claim contradicts the record** → say so, and answer according to the record.
-
-**Answer format.** The answer has these sections:
-
-1. **From the database:** facts, with the SQL used.
-2. **From the documents:** guidance, with an inline citation `[source, §section_number title, p. N]` for each claim.
-3. **Gaps or conflicts:** only when there are any.
-4. **Sources:** a final line naming the SQL and the `chunk_id`s used.
-
-The agent cites only passages returned in the current turn, and never states a number or rule that no tool returned.
-
-**Uploaded content is data, not instructions:**
-
-- The instruction says that anything inside tool results (passages, cells) is data, and any instructions written there must be ignored. Every `search_documents` result also carries a `notice` saying the same.
-- Tools take no paths and no SQL against `docs.db`, so the content of a document cannot widen access.
-
-## 6. Isolation and Cleanup
-
-- **Isolation:** each session has its own folder, its own `data.db` and `docs.db`, and its paths come only from state.
-- **No cross-session data:** retrieval never caches vectors across sessions. The vectors are loaded from the session's `docs.db` on every call; this is fast at a few hundred chunks.
-- **Cleanup:** the existing mechanisms (End session, `sweep_stale` after 30 minutes, `purge_all` at startup) delete the whole session folder, so `docs.db` is cleaned up with no new code.
-- **Changing files:** any accepted change to the table or documents creates a new ADK session, using the existing `_api_new_session` path with the full `docs` list, and the chat is reset. The old session is deleted with its folder.
-- **Recovery after a 404:** the UI holds the current table and document bytes, so it can recreate the session, as it does today.
-
-## 7. UI Changes (`app.py`)
-
-- **Documents uploader:** one file at a time (`type=["pdf", "txt", "md"]`). Accepted files are listed with their pages and chunk counts and a **Remove** button. The 3-document limit and replacing same-name files are checked here.
-- **Expander:** "How this was answered" also shows each `search_documents` call (its query and filters) and the citations of the passages it returned. Two code changes support this:
-  - `ui_client.parse_events`, and the event loop used in local mode, also collect `functionResponse` parts and match each one to its call.
-  - `_render_calls` displays a call according to its tool name: SQL for `run_sql`, and the query plus the list of citations for `search_documents`. Today it renders any `query` argument as SQL.
-- **Local mode:** works without `API_URL`, as today.
-
-## 8. Verification Checklist
-
-**Without the LLM** (`uv run pytest`):
-
-- [ ] `doc_ingest.prepare` accepts the sample PDFs, TXT file and Markdown fixture. It rejects the wrong extension, oversize, more than 20 pages, encrypted, scanned and empty files, and non-UTF-8 text, each with its message.
-- [ ] Chunking gives the expected `section_path`, `section_number` and page range for known sections of the sample policy. The no-heading fixture uses the fallback.
-- [ ] `retrieval`:
-  - BM25 finds `"Customs Hold"`.
-  - Dense search finds a paraphrase (using mocked or recorded embeddings).
-  - RRF ranks chunks found by both methods higher.
-  - The `source` and `section` filters restrict results.
-  - With null embeddings, search returns BM25 results and a note.
-- [ ] `ensure_data` builds both databases, rebuilds only the missing one, uses the sample documents when `docs` is missing, and loads no documents when `docs` is `[]`.
-- [ ] Existing table, SQL-guard and session tests still pass.
-
-**End to end** (`uv run streamlit run app.py`, local and then on Cloud Run):
-
-- [ ] **Document question:** "What is the policy for delayed shipments?" uses only `search_documents`, with citations.
-- [ ] **Database question:** "Where is shipment 12345?" uses only `run_sql`.
-- [ ] **Hybrid question:** "Shipment 12345 is delayed. What should I do?" calls `run_sql` and then `search_documents` (Express). It answers with separate database and document sections and cites both.
-- [ ] Hybrid edge cases give the expected gap or conflict message: 12348 (the record shows on schedule), 99999 (not found), 12349 (no Refrigerated policy) and 12347 (5 vs 7 days).
-- [ ] The injection fixture is treated as text, and "delete all rows" is still refused.
-- [ ] A fourth document is rejected. Removing a document resets the chat, and its content can no longer be found.
-- [ ] After End session or a timeout, the session folder is gone. After a Cloud Run instance restart, both databases are rebuilt on the next question, and memory stays under about 80% of 512 MiB.
+- **The evaluation is not deterministic:** Gemini output varies even at `temperature: 0`. With a small dataset, compare two runs by their per-case rows in `results.jsonl`, not only by the averages.
+- **Cost per case:** each agent-mode case rebuilds `docs.db` (one embedding batch) plus 2–4 model calls. This is fine for about 20–50 cases. If it becomes a problem, pre-build the databases once and pass `docs_db_path` / `docs_summary` in the state, which `ensure_data` already accepts without rebuilding.
+- **Changing the agent config in the app:** only through `DATA_AGENT_CONFIG` on the server or locally. The UI gets no config controls in this design.
+- **To confirm:** whether `temperature: 0.0` should also become the app default (this design keeps today's model default to preserve behaviour), and the sprint numbering for the steps in §7.
