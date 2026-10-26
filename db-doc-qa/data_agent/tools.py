@@ -6,6 +6,9 @@ Each call opens its own read-only connection to the path stored in the
 session state, so the agent can never name a path or reach another session's data.
 Every tool returns ``{"status": "success", ...}`` or
 ``{"status": "error", "error_message": "..."}`` and never raises to the agent.
+
+``search_documents`` reads its retrieval settings from ``state["agent_config"]`` (written by
+``ensure_data``); ``MAX_TOP_K`` and ``MAX_PASSAGE_CHARS`` below are only aliases of the defaults.
 """
 
 from __future__ import annotations

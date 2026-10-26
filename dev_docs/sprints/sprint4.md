@@ -107,13 +107,13 @@ Every phase ends with the following (CLAUDE.md):
 
 **Goal:** a cheap no-LLM mode for tuning retrieval, and proof that the app still behaves as before.
 
-- [ ] **Retrieval mode** (`eval.mode: retrieval`) in `run.py`: build `docs.db` once with the config's chunking and embedding settings, call `retrieval.search` for each case that has `expected.sections`, and compute `section_recall` and `mrr` (add `mrr` to `METRICS`).
-- [ ] **Add `configs/eval/bm25_only.yaml`** (`retrieval.mode: bm25`, `eval.mode: retrieval`) as the example of an ablation.
-- [ ] **Tests:** with `fake_embed` and the sample documents, `mrr` and `section_recall` are 1.0 for a query that matches `3.2 Express Shipments` and drop when the expected section is `9.9`; `bm25_only.yaml` loads.
-- [ ] **Compare a real run:** run `smoke.yaml` and `bm25_only.yaml`; note the metrics and the cost of each in the execution log.
-- [ ] **Regression check of the app (no config change):** run `uv run streamlit run app.py` locally, and ask the design_v2 §8 questions (12345 hybrid, 12348, 99999, 12349, 12347, injection, "delete all rows"); the answers must keep their structure.
-- [ ] **Docs:** update `README.md` (new folders, `DATA_AGENT_CONFIG`, how to run an evaluation) and the module docstrings that mention constants that moved.
-- [ ] **Dev script** `phase_4_4.py`: run the retrieval-mode evaluation with `bm25_only.yaml` and print the metrics.
+- [x] **Retrieval mode** (`eval.mode: retrieval`) in `run.py`: build `docs.db` once with the config's chunking and embedding settings, call `retrieval.search` for each case that has `expected.sections`, and compute `section_recall` and `mrr` (add `mrr` to `METRICS`).
+- [x] **Add `configs/eval/bm25_only.yaml`** (`retrieval.mode: bm25`, `eval.mode: retrieval`) as the example of an ablation.
+- [x] **Tests:** with `fake_embed` and the sample documents, `mrr` and `section_recall` are 1.0 for a query that matches `3.2 Express Shipments` and drop when the expected section is `9.9`; `bm25_only.yaml` loads.
+- [x] **Compare a real run:** run `smoke.yaml` and `bm25_only.yaml`; note the metrics and the cost of each in the execution log.
+- [x] **Regression check of the app (no config change):** run `uv run streamlit run app.py` locally, and ask the design_v2 §8 questions (12345 hybrid, 12348, 99999, 12349, 12347, injection, "delete all rows"); the answers must keep their structure.
+- [x] **Docs:** update `README.md` (new folders, `DATA_AGENT_CONFIG`, how to run an evaluation) and the module docstrings that mention constants that moved.
+- [x] **Dev script** `phase_4_4.py`: run the retrieval-mode evaluation with `bm25_only.yaml` and print the metrics.
 
 ---
 

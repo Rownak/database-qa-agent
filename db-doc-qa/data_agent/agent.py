@@ -2,10 +2,14 @@
 
 Defines ``root_agent`` (``qa_orchestrator``), a single ``LlmAgent`` with no sub-agents
 (design section 5) and two tools, ``run_sql`` and ``search_documents``. It sits between
-the Streamlit app, which supplies the session state (``upload_*``, ``docs``) and runs it
-through an ADK ``Runner``, and the read-only functions in :mod:`data_agent.tools`, which
+the app and the evaluation, which supply the session state (``upload_*``, ``docs``) and run it
+through :class:`data_agent.runner.AgentSession`, and the read-only functions in :mod:`data_agent.tools`, which
 are its only way to touch data. ``ensure_data`` builds the session's ``data.db`` and
 ``docs.db`` on whichever instance serves the request and classifies the user's intent.
+
+Settings come from :class:`data_agent.config.AgentConfig`: :func:`build_agent` builds the agent
+from one, and ``root_agent`` uses the file named by ``DATA_AGENT_CONFIG`` (the defaults when unset).
+The module constants such as ``AGENT_MODEL`` are aliases of those defaults.
 """
 
 import base64

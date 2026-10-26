@@ -28,7 +28,7 @@ def result(answer="", calls=()):
 
 
 def test_metrics_registry():
-    assert set(METRICS) == {"tool_sequence_match", "section_recall", "answer_contains", "citation_precision"}
+    assert set(METRICS) == {"tool_sequence_match", "section_recall", "answer_contains", "citation_precision", "mrr"}
 
 
 def test_tool_sequence_match():
@@ -77,5 +77,5 @@ def test_citation_precision():
 
 def test_every_metric_is_none_when_expected_is_empty():
     empty, r = case(), result("answer", [sql()])
-    for name in ("tool_sequence_match", "section_recall", "answer_contains", "citation_precision"):
+    for name in METRICS:
         assert METRICS[name](empty, r) is None, name

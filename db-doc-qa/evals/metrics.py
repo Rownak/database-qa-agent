@@ -74,6 +74,21 @@ def answer_contains(case: EvalCase, result: TurnResult) -> float | None:
     return sum(_normalise(w) in answer for w in wanted) / len(wanted)
 
 
+def mrr(case: EvalCase, result: TurnResult) -> float | None:
+    """Reciprocal rank (``1/rank``) of the first expected section among the retrieved passages, in ranked order.
+
+    Meant for the retrieval mode, where the passages are the fused ranking. ``0.0`` when
+    no expected section was retrieved.
+    """
+    wanted = case.expected.sections
+    if not wanted:
+        return None
+    for rank, p in enumerate(_passages(result), start=1):
+        if any(_has_passage([p], w.source, w.section) for w in wanted):
+            return 1.0 / rank
+    return 0.0
+
+
 def citation_precision(case: EvalCase, result: TurnResult) -> float | None:
     """Share of the answer's ``[source, §number ...]`` citations that point to a passage returned in this turn.
 
@@ -91,4 +106,9 @@ METRICS: dict[str, Callable[[EvalCase, TurnResult], float | None]] = {
     "section_recall": section_recall,
     "answer_contains": answer_contains,
     "citation_precision": citation_precision,
+    "mrr": mrr,
 }
+
+# Which metrics make sense in each ``eval.mode``: retrieval mode has no answer, tools or citations.
+AGENT_METRICS = ("tool_sequence_match", "section_recall", "answer_contains", "citation_precision")
+RETRIEVAL_METRICS = ("section_recall", "mrr")
