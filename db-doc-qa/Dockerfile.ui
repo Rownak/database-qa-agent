@@ -11,7 +11,7 @@ COPY .streamlit/ .streamlit/
 COPY app.py ui_client.py ./
 # No data_agent/__init__.py on purpose: it imports the agent (and ADK). Python treats
 # the folder as a namespace package, so ingest and sessions still import normally.
-COPY data_agent/ingest.py data_agent/sessions.py data_agent/doc_ingest.py data_agent/logs.py data_agent/
+COPY data_agent/ingest.py data_agent/sessions.py data_agent/doc_ingest.py data_agent/logs.py data_agent/events.py data_agent/config.py data_agent/
 COPY data_agent/sample_data/ data_agent/sample_data/
 
 RUN useradd --create-home appuser

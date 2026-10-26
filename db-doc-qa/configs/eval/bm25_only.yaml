@@ -1,0 +1,10 @@
+# Ablation example: keyword search only, scored without any LLM call.
+name: bm25_only
+agent:
+  retrieval:
+    mode: bm25                # hybrid | bm25 | dense
+dataset:
+  path: evals/datasets/shipments_v1.yaml
+eval:
+  mode: retrieval
+  metrics: [section_recall, mrr]

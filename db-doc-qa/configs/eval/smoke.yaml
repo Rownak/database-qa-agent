@@ -1,0 +1,20 @@
+name: smoke
+agent:
+  model:
+    agent: gemini-3.5-flash-lite
+    intent: null              # same as agent
+    temperature: 0.0          # lower variance for evaluation; the app keeps the model default
+  intent_enabled: true
+  retrieval:
+    mode: hybrid              # hybrid | bm25 | dense
+    min_dense_sim: 0.62
+    max_top_k: 8
+  # embedding and chunking are omitted, so the code defaults apply
+dataset:
+  path: evals/datasets/shipments_v1.yaml
+eval:
+  mode: agent
+  repeats: 1
+  fail_under:
+    intent_accuracy: 0.8
+    tool_sequence_match: 0.8

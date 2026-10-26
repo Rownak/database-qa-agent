@@ -9,6 +9,9 @@ called by the ``search_documents`` tool in :mod:`data_agent.tools`. The pipeline
 3. dense cosine search over the stored vectors with numpy (top 20);
 4. Reciprocal Rank Fusion (k = 60) after dropping dense hits that are not similar enough.
 
+The numbers are the defaults of :class:`data_agent.config.RetrievalConfig`, whose ``mode``
+can also switch off the BM25 or the dense step.
+
 Vectors are read from the session's own file on every call and never cached, so one session
 can never see another session's passages.
 """
@@ -24,10 +27,13 @@ from urllib.parse import quote
 
 import numpy as np
 
-TOP_N = 20  # candidates taken from each ranker before fusion
-RRF_K = 60
-# Dense hits below this cosine similarity are dropped. Tuned in dev_test/phase_3_3.py (see sprint_3_3.md).
-MIN_DENSE_SIM = 0.62
+from data_agent.config import RetrievalConfig
+
+# Aliases of the config defaults, kept so existing imports and tests keep working.
+# MIN_DENSE_SIM was tuned in dev_test/phase_3_3.py (see sprint_3_3.md).
+TOP_N = RetrievalConfig().top_n
+RRF_K = RetrievalConfig().rrf_k
+MIN_DENSE_SIM = RetrievalConfig().min_dense_sim
 
 _WORD_RE = re.compile(r"\w+")
 
@@ -85,6 +91,7 @@ def search(
     section: str | None = None,
     top_k: int = 5,
     query_vec: np.ndarray | None = None,
+    cfg: RetrievalConfig | None = None,
 ) -> SearchResult:
     """Searches one session's documents with BM25 and dense retrieval, fused by RRF.
 
@@ -98,6 +105,8 @@ def search(
         top_k: Number of chunks to return.
         query_vec: Embedding of the query. If ``None``, or if the chunks have no stored
             vectors, only BM25 is used.
+        cfg: Retrieval settings; the defaults when ``None``. ``mode`` skips the BM25 or
+            the dense step.
 
     Returns:
         A :class:`SearchResult`.
@@ -105,6 +114,7 @@ def search(
     Raises:
         sqlite3.Error: If the file cannot be opened or queried.
     """
+    cfg = cfg or RetrievalConfig()
     where, params = _filters(source, section)
     with closing(_connect_ro(docs_db_path)) as conn:
         sources = [r[0] for r in conn.execute("SELECT source FROM documents ORDER BY doc_id")]
@@ -112,18 +122,20 @@ def search(
         if not candidates:
             return SearchResult([], 0, False, sources)
 
-        bm25_ids = _bm25(conn, query, where, params)
-        dense, dense_used = _dense(conn, query_vec, where, params)
+        bm25_ids = _bm25(conn, query, where, params, cfg.top_n) if cfg.mode != "dense" else []
+        dense, dense_used = (
+            _dense(conn, query_vec, where, params, cfg.top_n) if cfg.mode != "bm25" else ([], False)
+        )
         # Weak dense matches are dropped before fusion, so they neither add a result nor
         # count as agreement with BM25. Dense results are sorted, so only the tail goes.
-        dense = [(cid, sim) for cid, sim in dense if sim >= MIN_DENSE_SIM]
+        dense = [(cid, sim) for cid, sim in dense if sim >= cfg.min_dense_sim]
         dense_sim = dict(dense)
         dense_ids = [cid for cid, _ in dense]
 
         scores: dict[int, float] = {}
         for ids in (bm25_ids, dense_ids):
             for rank, cid in enumerate(ids, start=1):
-                scores[cid] = scores.get(cid, 0.0) + 1.0 / (RRF_K + rank)
+                scores[cid] = scores.get(cid, 0.0) + 1.0 / (cfg.rrf_k + rank)
         bm25_set = set(bm25_ids)
         top = sorted(scores, key=lambda cid: (-scores[cid], cid))[: max(1, top_k)]
         rows = _fetch(conn, top)
@@ -174,21 +186,21 @@ def _fts_query(query: str) -> str | None:
     return " OR ".join(f'"{w}"' for w in words) or None
 
 
-def _bm25(conn: sqlite3.Connection, query: str, where: str, params: list) -> list[int]:
-    """Returns up to ``TOP_N`` chunk ids ranked by BM25 (best first)."""
+def _bm25(conn: sqlite3.Connection, query: str, where: str, params: list, top_n: int) -> list[int]:
+    """Returns up to ``top_n`` chunk ids ranked by BM25 (best first)."""
     match = _fts_query(query)
     if match is None:
         return []
     rows = conn.execute(
         "SELECT c.chunk_id FROM chunks_fts JOIN chunks c ON c.chunk_id = chunks_fts.rowid "
         f"WHERE chunks_fts MATCH ? AND {where} ORDER BY bm25(chunks_fts), c.chunk_id LIMIT ?",
-        [match, *params, TOP_N],
+        [match, *params, top_n],
     ).fetchall()
     return [r[0] for r in rows]
 
 
 def _dense(
-    conn: sqlite3.Connection, query_vec: np.ndarray | None, where: str, params: list
+    conn: sqlite3.Connection, query_vec: np.ndarray | None, where: str, params: list, top_n: int
 ) -> tuple[list[tuple[int, float]], bool]:
     """Ranks the filtered chunks by cosine similarity to the query vector.
 
@@ -197,9 +209,10 @@ def _dense(
         query_vec: Query embedding, or ``None``.
         where: Filter condition from :func:`_filters`.
         params: Filter parameters.
+        top_n: Number of candidates to keep.
 
     Returns:
-        ``(ranked, used)``: up to ``TOP_N`` ``(chunk_id, similarity)`` pairs, best first,
+        ``(ranked, used)``: up to ``top_n`` ``(chunk_id, similarity)`` pairs, best first,
         and whether dense search could run at all.
     """
     if query_vec is None:
@@ -217,7 +230,7 @@ def _dense(
     if mat.shape[1] != q.shape[0]:
         return [], False
     sims = mat @ q  # stored vectors are unit length, so the dot product is the cosine
-    order = np.argsort(-sims, kind="stable")[:TOP_N]
+    order = np.argsort(-sims, kind="stable")[:top_n]
     return [(ids[i], float(sims[i])) for i in order], True
 
 
