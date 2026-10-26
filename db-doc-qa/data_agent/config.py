@@ -32,6 +32,9 @@ MetricName = Literal[
     "sources_line",
     "sql_error_rate",
     "tool_calls",
+    "answer_f1",
+    "object_f1",
+    "coverage",
 ]
 ALL_METRICS: list[str] = list(get_args(MetricName))
 
@@ -107,10 +110,17 @@ class RetrievalConfig(BaseModel):
 
 
 class AgentConfig(BaseModel):
-    """Everything that changes an answer; recorded in the session state as ``agent_config``."""
+    """Everything that changes an answer; recorded in the session state as ``agent_config``.
+
+    Attributes:
+        profile: Which instruction and description the agent gets: ``shipments`` (the
+            default; the app and the deployed agent) or ``lakequest`` (concise answers
+            over a multi-table lake, for the LakeQuest evaluation).
+    """
 
     model_config = _FROZEN
 
+    profile: Literal["shipments", "lakequest"] = "shipments"
     model: ModelConfig = Field(default_factory=ModelConfig)
     intent_enabled: bool = True  # False skips classification (ablation)
     embedding: EmbeddingConfig = Field(default_factory=EmbeddingConfig)
@@ -147,6 +157,7 @@ class EvalConfig(BaseModel):
         repeats: Runs per case.
         output_dir: Folder that holds the ``<timestamp>_<name>`` run folders.
         fail_under: Minimum mean per metric; a missed threshold makes the run exit non-zero.
+        predictions: Also write ``predictions.jsonl`` (LakeQuest submission format).
     """
 
     model_config = _FROZEN
@@ -156,6 +167,7 @@ class EvalConfig(BaseModel):
     repeats: int = Field(1, ge=1, le=5)
     output_dir: Path = Path("runs")
     fail_under: dict[MetricName, float] = Field(default_factory=dict)
+    predictions: bool = False
 
     @field_serializer("output_dir")
     def _posix(self, value: Path) -> str:

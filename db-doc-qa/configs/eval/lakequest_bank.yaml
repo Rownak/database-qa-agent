@@ -1,0 +1,16 @@
+name: lakequest_bank_sample
+agent:
+  profile: lakequest            # LAKE_INSTRUCTION (shipments is the default)
+  intent_enabled: false         # the classifier prompt is about shipments
+  model:
+    agent: gemini-3.5-flash-lite
+    temperature: 0.0
+  retrieval:
+    mode: hybrid
+dataset:
+  path: ../benchmark/lakequest_prepared/bank_sample/dataset.yaml
+eval:
+  mode: agent
+  metrics: [tool_sequence_match, section_recall, answer_contains, citation_precision,
+            answer_f1, object_f1, coverage]
+  predictions: true

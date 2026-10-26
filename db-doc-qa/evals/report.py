@@ -10,6 +10,7 @@ import json
 from pathlib import Path
 
 from data_agent.config import RunConfig
+from evals.metrics import strip_sources
 
 CALL_RESPONSE_CHARS = 300  # tool responses are cut in results.jsonl to keep the file small
 
@@ -35,8 +36,28 @@ def short_calls(calls: list[dict]) -> list[dict]:
     return out
 
 
+def write_predictions(run_dir: Path, rows: list[dict]) -> None:
+    """Writes ``predictions.jsonl`` in the LakeQuest submission format.
+
+    One line per case (the first repeat only, since the scorer keeps one prediction per
+    ``qa_id``): ``{"qa_id", "answer", "object_ids"}``, where the answer has no ``Sources:``
+    line, exactly as ``answer_f1`` scores it.
+
+    Args:
+        run_dir: The run folder.
+        rows: The ``results.jsonl`` rows (``id``, ``repeat``, ``answer``, ``object_ids``).
+    """
+    with (run_dir / "predictions.jsonl").open("w", encoding="utf-8") as f:
+        for row in rows:
+            if row.get("repeat", 0) == 0:
+                line = {"qa_id": row["id"], "answer": strip_sources(row["answer"]), "object_ids": row.get("object_ids", [])}
+                f.write(json.dumps(line, ensure_ascii=False) + "\n")
+
+
 def write_run(run_dir: Path, cfg: RunConfig, rows: list[dict], metrics: dict) -> None:
     """Writes ``config.yaml``, ``results.jsonl`` and ``metrics.json`` into ``run_dir``.
+
+    ``predictions.jsonl`` is added when ``cfg.eval.predictions`` is true.
 
     Args:
         run_dir: The run folder; created if missing.
@@ -49,4 +70,6 @@ def write_run(run_dir: Path, cfg: RunConfig, rows: list[dict], metrics: dict) ->
     with (run_dir / "results.jsonl").open("w", encoding="utf-8") as f:
         for row in rows:
             f.write(json.dumps(row, ensure_ascii=False, default=str) + "\n")
+    if cfg.eval.predictions:
+        write_predictions(run_dir, rows)
     (run_dir / "metrics.json").write_text(json.dumps(metrics, indent=2, ensure_ascii=False), encoding="utf-8")

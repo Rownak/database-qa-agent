@@ -259,9 +259,9 @@ def _precheck(query: str) -> tuple[str | None, str]:
 
 
 def run_sql(query: str, *, tool_context: ToolContext) -> dict:
-    """Runs one read-only SQLite SELECT query against table ``data``.
+    """Runs one read-only SQLite SELECT query against the session's SQLite database.
 
-    Use double quotes around cleaned column names. Only a single SELECT (or WITH ...
+    The instruction lists its tables. Use double quotes around table and column names. Only a single SELECT (or WITH ...
     SELECT) statement is accepted. At most 100 rows are returned.
 
     Args:

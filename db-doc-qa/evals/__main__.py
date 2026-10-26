@@ -22,6 +22,9 @@ def format_summary(metrics: dict) -> str:
     p50, p95 = metrics["latency_p50_s"], metrics["latency_p95_s"]
     if p50 is not None:
         lines.append(f"  latency p50 {p50:.1f}s  p95 {p95:.1f}s")
+    for tag, part in metrics.get("by_tag", {}).items():
+        values = "  ".join(f"{n}={v:.2f}" for n, v in part["metrics"].items() if v is not None)
+        lines.append(f"  [{tag}] n={part['n']}  {values}")
     return "\n".join(lines)
 
 
