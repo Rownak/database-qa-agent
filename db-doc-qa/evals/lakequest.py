@@ -9,6 +9,10 @@ zip plus the question (and optionally reference) files of one split and writes::
     dataset.yaml   an EvalDataset with one case per question of the domain
     prepare.json   source hashes, counts and the chunking / embedding settings used
 
+Without ``--questions`` it builds ``bank_sample`` instead (internal evaluation, 40 cases made from the
+public snapshot alone; see :func:`build_sample_cases`) and also writes ``reference/references.jsonl``
+in the scorer's format.
+
 The agent only ever receives this bundle, so the answer tables that ship inside the lake
 database (``persona_workflows`` and others) can never reach it. The module uses the existing
 ingestion and evaluation code and changes none of it.
@@ -21,6 +25,7 @@ import base64
 import hashlib
 import io
 import json
+import random
 import re
 import sqlite3
 import sys
@@ -35,12 +40,27 @@ import pandas as pd
 from data_agent import doc_ingest
 from data_agent.config import load_config
 from data_agent.logs import get_logger
-from evals.dataset import EvalCase, EvalDataset, Expected
+from evals.dataset import EvalCase, EvalDataset, Expected, ExpectedSection
 
 log = get_logger(__name__)
 
 QUESTION_COLUMNS = ("qa_id", "question", "domain")
 REFERENCE_COLUMNS = ("qa_id", "answer_short", "answer_long", "gold_object_ids")
+
+SAMPLE_SEED = 20260101
+SAMPLE_COUNTS = {"hybrid": 20, "table": 10, "document": 10}
+_SECTION_REF_RE = re.compile(r"\bSections?\s+(\d+(?:\s*(?:,|and|&|/|-)\s*\d+)*)", re.IGNORECASE)
+_MD_SECTION_RE = re.compile(r"^## (\d+) (.+?)\s*$", re.MULTILINE)
+_TABLE_QUESTIONS = {  # kind -> (question template, tables used by the answer's SQL)
+    "accounts": ("How many accounts does {first} {last} (client_id: {id}) have?", ["client", "bank_account"]),
+    "transactions": ("How many transactions does {first} {last} (client_id: {id}) have?", ["client", "bank_account", "transaction"]),
+    "cheques": ("How many cheques does {first} {last} (client_id: {id}) have?", ["client", "bank_account", "cheque"]),
+}
+_TABLE_COUNT_SQL = {
+    "accounts": 'SELECT COUNT(*) FROM "bank_account" WHERE "client_id" = ?',
+    "transactions": 'SELECT COUNT(*) FROM "transaction" t JOIN "bank_account" a ON a."account_id" = t."account_id" WHERE a."client_id" = ?',
+    "cheques": 'SELECT COUNT(*) FROM "cheque" c JOIN "bank_account" a ON a."account_id" = c."account_id" WHERE a."client_id" = ?',
+}
 
 # Policies use "## 5) Purpose"; the chunker only numbers headings like "## 5 Purpose".
 _HEADING_RE = re.compile(r"^(#{1,6}[ \t]+\d+(?:\.\d+)*)\)[ \t]+", re.MULTILINE)
@@ -237,23 +257,220 @@ def build_cases(
     return cases
 
 
+def read_validation_clients(lake_zip: Path, domain: str) -> set[int]:
+    """Client ids that ``split_entities.parquet`` assigns to the validation split."""
+    name = f"lakes/{domain}/split_entities.parquet"
+    with zipfile.ZipFile(lake_zip) as z:
+        if name not in z.namelist():
+            raise PrepareError(f"{lake_zip}: {name} not found")
+        split = pd.read_parquet(io.BytesIO(z.read(name)))
+    _require(split, ("entity_id", "split"), Path(name))
+    ids = split.loc[split["split"] == "validation", "entity_id"].astype(str)
+    return {int(i.split(":", 1)[1]) for i in ids if i.startswith("client:") and i.split(":", 1)[1].isdigit()}
+
+
+def policy_sections(markdown: str) -> dict[str, tuple[str, str]]:
+    """Top-level sections of a normalised policy: number -> (title, first paragraph)."""
+    matches = list(_MD_SECTION_RE.finditer(markdown))
+    out = {}
+    for i, m in enumerate(matches):
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(markdown)
+        body = markdown[m.end():end].strip()
+        out[m.group(1)] = (m.group(2).strip(), " ".join(body.split("\n\n")[0].split()))
+    return out
+
+
+def referenced_sections(text: str, available: dict) -> list[str]:
+    """Section numbers named as "Section N" / "Sections N and M" in ``text`` that exist in the policy, in order."""
+    found: list[str] = []
+    for m in _SECTION_REF_RE.finditer(text):
+        for number in re.findall(r"\d+", m.group(1)):
+            if number in available and number not in found:
+                found.append(number)
+    return found
+
+
+def build_sample_cases(
+    lake_db: Path,
+    bank_db: Path,
+    policies: dict[str, str],
+    validation_clients: set[int],
+    seed: int = SAMPLE_SEED,
+    counts: dict[str, int] | None = None,
+) -> list[EvalCase]:
+    """Generates the ``bank_sample`` cases: ``hybrid``, then ``table``, then ``document``.
+
+    The generator is the only reader of ``persona_workflows`` (in ``lake_db``); the agent's
+    ``bank.db`` never contains it. Only validation clients are used and the order is fixed
+    by ``seed``, so two runs give the same cases.
+
+    Args:
+        lake_db: The extracted lake database (has ``persona_workflows``).
+        bank_db: The whitelisted copy, used to compute the exact table answers.
+        policies: Policy id -> normalised Markdown (as written to ``docs.db``).
+        validation_clients: Client ids of the validation split.
+        seed: Seed of the random choices.
+        counts: Cases per type; :data:`SAMPLE_COUNTS` when ``None``.
+
+    Returns:
+        The cases. The ``table`` and ``document`` types may be shorter than asked when the
+        data has no suitable client or policy; a warning is logged.
+
+    Raises:
+        PrepareError: If there is no hybrid question of a validation client.
+    """
+    counts = counts or SAMPLE_COUNTS
+    rng = random.Random(seed)
+    with closing(sqlite3.connect(f"file:{lake_db.resolve().as_posix()}?mode=ro", uri=True)) as conn:
+        rows = conn.execute(
+            "SELECT qa_id, client_id, policy_id, question, answer_direct, answer_reasoning, sources "
+            "FROM persona_workflows ORDER BY qa_id"
+        ).fetchall()
+    rows = [r for r in rows if r[1] in validation_clients and r[2] in policies][: counts["hybrid"]]
+    if not rows:
+        raise PrepareError("persona_workflows has no question of a validation client")
+
+    cases: list[EvalCase] = []
+    for qa_id, _, policy_id, question, direct, reasoning, sources in rows:
+        sections = referenced_sections(reasoning or "", policy_sections(policies[policy_id]))
+        cases.append(
+            EvalCase(
+                id=qa_id,
+                question=question,
+                tags=["bank", "hybrid"],
+                expected=Expected(
+                    tools=["run_sql", "search_documents"],
+                    sections=[ExpectedSection(source=f"{policy_id}.md", section=n) for n in sections],
+                    reference_answers=[a for a in (_text(direct), _text(reasoning)) if a],
+                    object_ids=[*_as_list(sources), policy_id],
+                ),
+            )
+        )
+
+    client_ids = list(dict.fromkeys(r[1] for r in rows))
+    cases += _table_cases(bank_db, client_ids, counts["table"], rng)
+    policy_ids = sorted(dict.fromkeys(r[2] for r in rows))
+    cases += _document_cases(policy_ids, policies, counts["document"], rng)
+    return cases
+
+
+def _table_cases(bank_db: Path, client_ids: list[int], wanted: int, rng: random.Random) -> list[EvalCase]:
+    """Count questions about the given clients; the answer is computed with SQL on ``bank.db``."""
+    kinds = list(_TABLE_QUESTIONS)
+    pool = [(cid, kind) for cid in client_ids for kind in kinds]
+    rng.shuffle(pool)
+    cases: list[EvalCase] = []
+    with closing(sqlite3.connect(f"file:{bank_db.resolve().as_posix()}?mode=ro", uri=True)) as conn:
+        for cid, kind in pool:
+            if len(cases) == wanted:
+                break
+            name = conn.execute('SELECT "first_name", "last_name" FROM "client" WHERE "client_id" = ?', (cid,)).fetchone()
+            count = conn.execute(_TABLE_COUNT_SQL[kind], (cid,)).fetchone()[0]
+            if name is None or count == 0:  # a zero answer says nothing about the agent's lookup
+                continue
+            template, tables = _TABLE_QUESTIONS[kind]
+            cases.append(
+                EvalCase(
+                    id=f"tbl-{len(cases) + 1}",
+                    question=template.format(first=name[0], last=name[1], id=cid),
+                    tags=["bank", "table"],
+                    expected=Expected(
+                        tools=["run_sql"], answer_contains=[str(count)], reference_answers=[str(count)], object_ids=tables
+                    ),
+                )
+            )
+    if len(cases) < wanted:
+        log.warning("only %d of %d table cases could be built", len(cases), wanted)
+    return cases
+
+
+def _document_cases(policy_ids: list[str], policies: dict[str, str], wanted: int, rng: random.Random) -> list[EvalCase]:
+    """Section-lookup and purpose questions about policies; half of each when ``wanted`` is even."""
+    order = policy_ids[:]
+    rng.shuffle(order)
+    n_section = wanted // 2
+    used: set[tuple[str, str]] = set()  # (kind, policy): ask about each policy once per question type
+    cases: list[EvalCase] = []
+    for i in range(wanted):
+        kind = "section" if i < n_section else "purpose"
+        for step in range(len(order)):  # the first policy (in shuffled order) that can serve this question
+            policy_id = order[(i + step) % len(order)]
+            if (kind, policy_id) in used:
+                continue
+            sections = policy_sections(policies[policy_id])
+            if kind == "section":
+                options = [(n, t) for n, (t, _) in sections.items() if n != "1" and not t.lower().startswith("purpose")]
+                if not options:
+                    continue
+                number, title = rng.choice(options)
+                question = f"Under policy {policy_id}, which section covers {title}?"
+                expected = Expected(
+                    tools=["search_documents"],
+                    sections=[ExpectedSection(source=f"{policy_id}.md", section=number)],
+                    answer_contains=[number],
+                    object_ids=[policy_id],
+                )
+            else:
+                purpose = next(((n, p) for n, (t, p) in sections.items() if t.lower().startswith("purpose") and p), None)
+                if purpose is None:
+                    continue
+                question = f"What is the purpose of policy {policy_id}?"
+                expected = Expected(
+                    tools=["search_documents"],
+                    sections=[ExpectedSection(source=f"{policy_id}.md", section=purpose[0])],
+                    reference_answers=[purpose[1]],
+                    object_ids=[policy_id],
+                )
+            used.add((kind, policy_id))
+            cases.append(EvalCase(id=f"doc-{len(cases) + 1}", question=question, tags=["bank", "document"], expected=expected))
+            break
+    if len(cases) < wanted:
+        log.warning("only %d of %d document cases could be built", len(cases), wanted)
+    return cases
+
+
+def reference_rows(cases: list[EvalCase], domain: str) -> list[dict]:
+    """The cases in the official scorer's reference format (``answer_short`` / ``answer_long``)."""
+    rows = []
+    for c in cases:
+        answers = c.expected.reference_answers or c.expected.answer_contains
+        rows.append(
+            {
+                "qa_id": c.id,
+                "domain": domain,
+                "question": c.question,
+                "answer_short": answers[0] if answers else "",
+                "answer_long": answers[1] if len(answers) > 1 else "",
+                "gold_object_ids": c.expected.object_ids,
+                "gold_provenance_ids": [],
+            }
+        )
+    return rows
+
+
 def prepare(
     lake_zip: Path,
-    questions: Path,
+    questions: Path | None,
     references: Path | None,
     domain: str,
     config: Path,
     out: Path,
+    *,
+    seed: int = SAMPLE_SEED,
+    counts: dict[str, int] | None = None,
 ) -> dict:
-    """Builds the bundle for one domain and split.
+    """Builds the bundle for one domain and split, or the ``bank_sample`` bundle.
 
     Args:
         lake_zip: ``public_lake_data.zip``.
         questions: A questions file, or a folder holding ``questions.parquet`` / ``.jsonl``.
+            ``None`` builds ``bank_sample`` from the snapshot (only for ``bank``).
         references: A references file or folder (Open Dev), or ``None`` (Open Test).
         domain: Lake and question domain, for example ``bank``.
         config: Run YAML; its ``agent.chunking`` and ``agent.embedding`` are used for ``docs.db``.
         out: Output folder; created if missing.
+        seed: Seed of the ``bank_sample`` choices (sample mode only).
+        counts: ``bank_sample`` cases per type (sample mode only); :data:`SAMPLE_COUNTS` by default.
 
     Returns:
         The content written to ``prepare.json``.
@@ -262,20 +479,31 @@ def prepare(
         PrepareError: For a missing file, table or column.
 
     Side Effects:
-        Writes the five files into ``out`` and calls the embedding API once per 100 chunks.
+        Writes the files into ``out`` (plus ``reference/references.jsonl`` in sample mode) and
+        calls the embedding API once per 100 chunks.
     """
     agent_cfg = load_config(config).agent
-    q_path = _find_file(Path(questions), "questions")
-    r_path = _find_file(Path(references), "references") if references else None
-    q_df = _read_table(q_path)
-    _require(q_df, QUESTION_COLUMNS, q_path)
-    r_df = None
-    if r_path is not None:
-        r_df = _read_table(r_path)
-        _require(r_df, REFERENCE_COLUMNS, r_path)
-    cases = build_cases(q_df, r_df, domain)
-    if not cases:
-        raise PrepareError(f"{q_path}: no question with domain {domain!r}")
+    sample = questions is None
+    q_path = r_path = q_df = None
+    cases: list[EvalCase] = []
+    if sample:
+        if references:
+            raise PrepareError("--references needs --questions")
+        if domain != "bank":
+            raise PrepareError("bank_sample is only defined for the bank domain")
+        validation = read_validation_clients(Path(lake_zip), domain)
+    else:
+        q_path = _find_file(Path(questions), "questions")
+        r_path = _find_file(Path(references), "references") if references else None
+        q_df = _read_table(q_path)
+        _require(q_df, QUESTION_COLUMNS, q_path)
+        r_df = None
+        if r_path is not None:
+            r_df = _read_table(r_path)
+            _require(r_df, REFERENCE_COLUMNS, r_path)
+        cases = build_cases(q_df, r_df, domain)
+        if not cases:
+            raise PrepareError(f"{q_path}: no question with domain {domain!r}")
 
     out.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="lakequest_") as tmp:
@@ -283,12 +511,12 @@ def prepare(
         tables = sorted(corpus.loc[corpus["object_type"] == "table", "object_id"].astype(str))
         policy_ids = set(corpus.loc[corpus["object_type"] == "policy_document", "object_id"].astype(str))
         table_counts = build_bank_db(lake_db, tables, out / "bank.db")
+        selected = [r for r in policy_rows if str(r.get("object_id")) in policy_ids]
+        texts = {str(r["object_id"]): normalise_policy(str(r.get("title") or r["object_id"]), str(r["document"])) for r in selected}
+        if sample:  # inside the block: the generator reads persona_workflows from the extracted lake database
+            cases = build_sample_cases(lake_db, out / "bank.db", texts, validation, seed, counts)
 
-    selected = [r for r in policy_rows if str(r.get("object_id")) in policy_ids]
-    entries = [
-        {"name": f"{r['object_id']}.md", "b64": base64.b64encode(normalise_policy(str(r.get("title") or r["object_id"]), str(r["document"])).encode("utf-8")).decode()}
-        for r in selected
-    ]
+    entries = [{"name": f"{pid}.md", "b64": base64.b64encode(text.encode("utf-8")).decode()} for pid, text in texts.items()]
     built = doc_ingest.build(entries, out, chunking=agent_cfg.chunking, embedding=agent_cfg.embedding)
     if built.docs_db_path is None:
         raise PrepareError("no policy document could be indexed")
@@ -308,7 +536,7 @@ def prepare(
     }
     (out / "state.json").write_text(json.dumps(state, indent=2, ensure_ascii=False), encoding="utf-8")
 
-    dataset = EvalDataset(name=f"lakequest_{domain}", version=1, cases=cases, state_file=Path("state.json"))
+    dataset = EvalDataset(name=f"lakequest_{domain}_sample" if sample else f"lakequest_{domain}", version=1, cases=cases, state_file=Path("state.json"))
     import yaml
 
     (out / "dataset.yaml").write_text(
@@ -316,11 +544,17 @@ def prepare(
         encoding="utf-8",
     )
 
+    if sample:
+        (out / "reference").mkdir(exist_ok=True)
+        with (out / "reference" / "references.jsonl").open("w", encoding="utf-8") as f:
+            for row in reference_rows(cases, domain):
+                f.write(json.dumps(row, ensure_ascii=False) + "\n")
+
     info = {
         "domain": domain,
         "sources": {
             "lake_zip": {"file": Path(lake_zip).name, "sha256": sha256(Path(lake_zip))},
-            "questions": {"file": q_path.name, "sha256": sha256(q_path)},
+            "questions": {"file": q_path.name, "sha256": sha256(q_path)} if q_path else None,
             "references": {"file": r_path.name, "sha256": sha256(r_path)} if r_path else None,
         },
         "counts": {
@@ -328,10 +562,12 @@ def prepare(
             "policies": len(selected) - len(skipped_ids),
             "policies_skipped": len(skipped_ids),
             "chunks": chunk_count,
-            "questions_in_file": len(q_df),
+            "questions_in_file": len(q_df) if q_df is not None else None,
             "cases": len(cases),
+            "cases_per_type": {t: sum(t in c.tags for c in cases) for t in SAMPLE_COUNTS} if sample else None,
             "cases_with_reference": sum(bool(c.expected.reference_answers) for c in cases),
         },
+        "sample": {"seed": seed, "counts": counts or SAMPLE_COUNTS} if sample else None,
         "chunking": agent_cfg.chunking.model_dump(mode="json"),
         "embedding": agent_cfg.embedding.model_dump(mode="json"),
     }
@@ -345,14 +581,15 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
     p = sub.add_parser("prepare", help="build the bundle for one domain and split")
     p.add_argument("--lake-zip", type=Path, required=True)
-    p.add_argument("--questions", type=Path, required=True, help="questions file or folder")
+    p.add_argument("--questions", type=Path, help="questions file or folder (omit to build bank_sample)")
     p.add_argument("--references", type=Path, help="references file or folder (omit for Open Test)")
     p.add_argument("--domain", default="bank")
     p.add_argument("--config", type=Path, required=True, help="run YAML (chunking and embedding settings)")
     p.add_argument("--out", type=Path, required=True)
+    p.add_argument("--seed", type=int, default=SAMPLE_SEED, help="bank_sample seed")
     args = parser.parse_args(sys.argv[1:] if argv is None else argv)
     try:
-        info = prepare(args.lake_zip, args.questions, args.references, args.domain, args.config, args.out)
+        info = prepare(args.lake_zip, args.questions, args.references, args.domain, args.config, args.out, seed=args.seed)
     except PrepareError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
