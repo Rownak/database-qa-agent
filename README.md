@@ -73,9 +73,9 @@ The UI also demonstrates missing-record handling and refusal of write requests s
 
 ## Evaluation
 
-** HybridQA Dataset **
+** [HybridQA Dataset](https://github.com/wenhuchen/HybridQA) **
 
-Evaluated on 50 HybridQA dev questions (25 table, 25 passage) using Gemini 3.5 Flash-Lite, with local `nomic-embed-text` embeddings (Ollama). Each question gets its own Wikipedia table and the articles linked from its cells (the standard "gold table" setting).
+Evaluated on a 50-question sample (25 table, 25 passage) of the public HybridQA **dev set**, not the full dev set or the hidden test set, using Gemini 3.5 Flash-Lite, with local `nomic-embed-text` embeddings (Ollama). Each question gets its own Wikipedia table and the articles linked from its cells (the standard "gold table" setting).
 (0 errors, p50 4.6 s, p95 24.5 s). **HybridQA metrics are percentages (0–100)**, as in the official scorer:
 
 | Type | EM | F1 | `answer_contains` |
@@ -88,7 +88,7 @@ EM and F1 score the first line of the answer and match the official HybridQA sco
 
 **Key finding:** Answer wording, not retrieval, is the largest single cause of lost EM. Results are one run on a small internal sample (one question is 2 points), not a leaderboard score. The data is internal-use only.
 
-** LakeQuest Dataset **
+** [LakeQuest Dataset](https://github.com/michael0402/LakeQuest/) **
 
 Evaluated on 40 LakeQuest bank cases (20 hybrid, 10 database, 10 document) using Gemini 3.5 Flash-Lite.
 (0 errors, p50 2.8 s, p95 6.3 s;):
