@@ -9,7 +9,7 @@ from streamlit.testing.v1 import AppTest
 
 import ui_client
 from data_agent import sessions
-from tests.conftest import DB_SAMPLES, end_session_button
+from tests.conftest import DB_SAMPLES, data_files, end_session_button, sample_path
 
 APP = str(Path(__file__).resolve().parent.parent / "app.py")
 
@@ -60,7 +60,7 @@ def at(backend):
 
 
 def test_start_creates_backend_session_with_sample_state(at, backend):
-    assert not at.exception and "shipments.csv (sample)" in at.subheader[0].value
+    assert not at.exception and "**shipments.csv** (sample)" in data_files(at)
     assert backend.sessions == {at.session_state.api_sid: {}}
 
 
@@ -71,7 +71,8 @@ def test_valid_upload_sends_bytes_and_replaces_old_session(at, backend):
     new = at.session_state.api_sid
     assert new != old and old in backend.deleted and list(backend.sessions) == [new]
     state = backend.sessions[new]
-    assert state["upload_name"] == f.name and base64.b64decode(state["upload_b64"]) == f.read_bytes()
+    assert [u["name"] for u in state["uploads"]] == [f.name]
+    assert base64.b64decode(state["uploads"][0]["b64"]) == f.read_bytes()
 
 
 def test_invalid_upload_never_reaches_backend(at, backend):
@@ -88,7 +89,7 @@ def test_backend_failure_on_upload_keeps_current_data(at, backend):
     f = DB_SAMPLES / "multi_sheet.xlsx"
     at.file_uploader[0].upload(f.name, f.read_bytes()).run()
     assert "Could not send the file" in at.error[0].value
-    assert at.session_state.api_sid == old and "shipments.csv (sample)" in at.subheader[0].value
+    assert at.session_state.api_sid == old and "**shipments.csv** (sample)" in data_files(at)
 
 
 def test_question_is_answered_through_the_backend(at, backend):
@@ -108,7 +109,7 @@ def test_lost_session_is_recreated_from_held_upload_and_question_retried(at, bac
     backend.sessions.clear()  # the backend instance was replaced
     at.chat_input[0].set_value("second").run()
     new = at.session_state.api_sid
-    assert new != lost and backend.sessions[new]["upload_name"] == f.name
+    assert new != lost and [u["name"] for u in backend.sessions[new]["uploads"]] == [f.name]
     assert "chat was reset" in at.info[0].value
     # The chat holds only the retried question: the earlier history was cleared.
     assert [m["content"] for m in at.session_state.messages if m["role"] == "user"] == ["second"]
@@ -140,5 +141,21 @@ def test_end_session_after_upload_starts_a_sample_session(at, backend):
     f = DB_SAMPLES / "multi_sheet.xlsx"
     at.file_uploader[0].upload(f.name, f.read_bytes()).run()
     end_session_button(at).click().run()
-    assert "shipments.csv (sample)" in at.subheader[0].value
+    assert "**shipments.csv** (sample)" in data_files(at)
     assert backend.sessions == {at.session_state.api_sid: {}}  # sample state, no upload
+
+
+def test_several_data_files_are_sent_in_one_uploads_list(at, backend):
+    for name in ("sales.csv", "sales.xlsx"):
+        f = sample_path(name)
+        at.file_uploader[0].upload(f.name, f.read_bytes()).run()
+    state = backend.sessions[at.session_state.api_sid]
+    assert [u["name"] for u in state["uploads"]] == ["sales.csv", "sales.xlsx"] and "docs" not in state
+    assert list(backend.sessions) == [at.session_state.api_sid]  # the earlier sessions were deleted
+
+
+def test_removing_every_data_file_sends_the_sample_state_again(at, backend):
+    f = sample_path("sales.csv")
+    at.file_uploader[0].upload(f.name, f.read_bytes()).run()
+    at.button(key="remove_table_sales.csv").click().run()
+    assert backend.sessions == {at.session_state.api_sid: {}}

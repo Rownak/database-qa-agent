@@ -1,11 +1,12 @@
-"""File ingestion: validate an uploaded CSV/XLSX and load it into a session SQLite database.
+"""File ingestion: validate uploaded CSV/XLSX files and load them into a session SQLite database.
 
 This module is the first stage of the pipeline described in the design (section 5).
-The Streamlit app hands it the raw bytes of an upload together with the session
-directory. On success a single table named ``data`` exists in ``<session_dir>/data.db``
-and the returned :class:`IngestResult` carries everything the UI and the agent need
-(counts, schema summary, column-name map, preview). On failure an
-:class:`IngestError` is returned and no database file is left behind.
+The Streamlit app hands it the raw bytes of up to :data:`MAX_TABLES` uploads together
+with the session directory. On success every file is a separate table in
+``<session_dir>/data.db`` (named after the file, see :func:`table_name_for`) and the
+returned :class:`LoadResult` carries everything the UI and the agent need (per-table
+counts and preview, schema summary, column-name map). On failure an :class:`IngestError`
+is returned and no database file is left behind. The bundled sample is one table, ``data``.
 """
 
 from __future__ import annotations
@@ -21,9 +22,10 @@ from pathlib import Path
 
 import pandas as pd
 
-TABLE_NAME = "data"
+SAMPLE_TABLE = "data"  # generic on purpose: uploads can be any kind of table (finance, students, ...)
 DB_FILENAME = "data.db"
 MAX_FILE_BYTES = 500 * 1024
+MAX_TABLES = 3
 PREVIEW_ROWS = 10
 # Inside the package so ``adk deploy`` (which uploads only this folder) ships it.
 SAMPLE_DIR = Path(__file__).resolve().parent / "sample_data" / "default"
@@ -37,28 +39,66 @@ _NUMBER_RE = re.compile(r"^[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?$")
 
 
 @dataclass(frozen=True)
-class IngestResult:
-    """Outcome of a successful load.
+class ParsedTable:
+    """One validated file, ready to be written as a table.
 
     Attributes:
-        db_path: Path of the SQLite file holding table ``data``.
-        row_count: Number of rows loaded.
-        column_count: Number of columns loaded.
+        file_name: Original file name.
+        df: Cleaned, type-converted data (cleaned column names).
+        labels: Display type per column (``INTEGER``, ``REAL``, ``date``, ``TEXT``).
+        sql_types: SQLite type per column.
         column_map: Cleaned column name -> original header text.
-        schema_summary: One line per column: ``name (type) — original name``.
-        ignored_sheets: Names of workbook sheets that were not loaded (XLSX only).
-        preview: First rows of the loaded table, with cleaned column names.
+        ignored_sheets: Workbook sheets that were not loaded (XLSX only).
         sheet_name: Name of the loaded sheet (XLSX only), else ``None``.
     """
 
-    db_path: Path
+    file_name: str
+    df: pd.DataFrame
+    labels: dict[str, str]
+    sql_types: dict[str, str]
+    column_map: dict[str, str]
+    ignored_sheets: list[str] = field(default_factory=list)
+    sheet_name: str | None = None
+
+
+@dataclass(frozen=True)
+class TableInfo:
+    """What the UI shows about one loaded table.
+
+    Attributes:
+        file_name: File the table came from.
+        table: Table name in ``data.db``.
+        row_count: Number of rows loaded.
+        column_count: Number of columns loaded.
+        preview: First rows, with cleaned column names.
+        ignored_sheets: Workbook sheets that were not loaded (XLSX only).
+        sheet_name: Name of the loaded sheet (XLSX only), else ``None``.
+    """
+
+    file_name: str
+    table: str
     row_count: int
     column_count: int
-    column_map: dict[str, str]
-    schema_summary: str
+    preview: pd.DataFrame
     ignored_sheets: list[str] = field(default_factory=list)
-    preview: pd.DataFrame = field(default_factory=pd.DataFrame)
     sheet_name: str | None = None
+
+
+@dataclass(frozen=True)
+class LoadResult:
+    """Outcome of a successful load.
+
+    Attributes:
+        db_path: Path of the SQLite file holding the tables.
+        tables: One :class:`TableInfo` per table, in upload order.
+        column_map: Table name -> (cleaned column name -> original header text).
+        schema_summary: One block per table (see :func:`schema_block`), blank-line separated.
+    """
+
+    db_path: Path
+    tables: list[TableInfo]
+    column_map: dict[str, dict[str, str]]
+    schema_summary: str
 
 
 @dataclass(frozen=True)
@@ -72,29 +112,19 @@ class IngestError:
     message: str
 
 
-def load_file(
-    uploaded_name: str, file_bytes: bytes, session_dir: str | Path
-) -> IngestResult | IngestError:
-    """Validates an uploaded file and loads it into ``<session_dir>/data.db``.
+def read_table(uploaded_name: str, file_bytes: bytes) -> ParsedTable | IngestError:
+    """Validates one uploaded file without writing anything.
 
     Validation runs in a fixed order and stops at the first failure: extension,
     size, readability, non-emptiness, valid header row (present, non-blank,
-    text rather than numbers, unique). Nothing is written to disk
-    until every check has passed.
+    text rather than numbers, unique).
 
     Args:
-        uploaded_name: Original file name, used only for its extension.
+        uploaded_name: Original file name, used for its extension and as the source name.
         file_bytes: Raw content of the upload.
-        session_dir: Per-session directory. Created if missing, but only after
-            validation succeeds.
 
     Returns:
-        An :class:`IngestResult` on success, otherwise an :class:`IngestError`.
-
-    Side Effects:
-        On success, creates ``session_dir`` if needed and replaces ``data.db``
-        in it atomically. On failure, the filesystem (including any existing
-        ``data.db``) is untouched.
+        A :class:`ParsedTable` on success, otherwise an :class:`IngestError`.
     """
     ext = Path(uploaded_name).suffix.lower()
     if ext not in SUPPORTED_EXTENSIONS:
@@ -122,25 +152,107 @@ def load_file(
     column_map = dict(zip(clean_names, original_names))
 
     df, labels, sql_types = _infer_types(df)
-
-    db_path = _write_sqlite(df, sql_types, Path(session_dir))
-    schema_summary = "\n".join(
-        f"{name} ({labels[name]}) — {column_map[name]}" for name in clean_names
-    )
-    return IngestResult(
-        db_path=db_path,
-        row_count=len(df),
-        column_count=df.shape[1],
+    return ParsedTable(
+        file_name=Path(uploaded_name).name,
+        df=df,
+        labels=labels,
+        sql_types=sql_types,
         column_map=column_map,
-        schema_summary=schema_summary,
         ignored_sheets=ignored_sheets,
-        preview=df.head(PREVIEW_ROWS),
         sheet_name=sheet_name,
     )
 
 
-def load_sample(session_dir: str | Path) -> IngestResult | IngestError:
-    """Loads the bundled ``data_agent/sample_data/default/shipments.csv`` as a session's starting data.
+def table_name_for(file_name: str, taken: set[str]) -> str:
+    """Picks the table name for an uploaded file.
+
+    The file stem is lower-cased with runs of non-alphanumerics turned into ``_``.
+    A stem that is empty, starts with a digit or starts with ``sqlite_`` (reserved by
+    SQLite) is prefixed with ``t_`` (an empty one becomes ``table``). A name already in
+    ``taken`` gets ``_2``, ``_3``, ... so two files never share a table.
+
+    Args:
+        file_name: Original file name.
+        taken: Table names already in use (lower-case).
+
+    Returns:
+        A unique, SQL-friendly table name.
+    """
+    base = _NON_ALNUM_RE.sub("_", Path(file_name).stem.lower()).strip("_") or "table"
+    if base[0].isdigit() or base.startswith("sqlite_"):
+        base = f"t_{base}"
+    name, n = base, 2
+    while name in taken:
+        name, n = f"{base}_{n}", n + 1
+    return name
+
+
+def schema_block(table: str, parsed: ParsedTable) -> str:
+    """Describes one table for the agent's instruction.
+
+    Args:
+        table: Table name in ``data.db``.
+        parsed: The file loaded into it.
+
+    Returns:
+        A header line (``"table" — N rows, from file``) followed by one
+        ``name (type) — original name`` line per column.
+    """
+    lines = [f'"{table}" — {len(parsed.df)} rows, from {parsed.file_name}']
+    lines += [f"{c} ({parsed.labels[c]}) — {parsed.column_map[c]}" for c in parsed.df.columns]
+    return "\n".join(lines)
+
+
+def load_files(files: list[tuple[str, bytes]], session_dir: str | Path) -> LoadResult | IngestError:
+    """Validates uploaded files and loads each into its own table of ``<session_dir>/data.db``.
+
+    Args:
+        files: ``(file_name, bytes)`` pairs, one to :data:`MAX_TABLES`.
+        session_dir: Per-session directory. Created if missing, but only after
+            validation succeeds.
+
+    Returns:
+        A :class:`LoadResult`, or an :class:`IngestError` for the first invalid file
+        (prefixed with its name when there are several).
+
+    Side Effects:
+        See :func:`load_parsed`.
+    """
+    parsed = []
+    for name, data in files:
+        one = read_table(name, data)
+        if isinstance(one, IngestError):
+            return IngestError(f"{name}: {one.message}") if len(files) > 1 else one
+        parsed.append(one)
+    return load_parsed(parsed, session_dir)
+
+
+def load_parsed(parsed: list[ParsedTable], session_dir: str | Path) -> LoadResult | IngestError:
+    """Writes validated files as tables and replaces ``data.db`` atomically.
+
+    Args:
+        parsed: Results of :func:`read_table`, one to :data:`MAX_TABLES`.
+        session_dir: Per-session directory.
+
+    Returns:
+        A :class:`LoadResult`, or an :class:`IngestError` when the count is out of range.
+
+    Side Effects:
+        On success, creates ``session_dir`` if needed and replaces ``data.db`` in it.
+        On failure, the filesystem (including any existing ``data.db``) is untouched.
+    """
+    if not 1 <= len(parsed) <= MAX_TABLES:
+        return IngestError(f"Load between 1 and {MAX_TABLES} data files.")
+    taken: set[str] = set()
+    names = []
+    for p in parsed:
+        names.append(table_name_for(p.file_name, taken))
+        taken.add(names[-1])
+    return _build_result(list(zip(names, parsed)), Path(session_dir))
+
+
+def load_sample(session_dir: str | Path) -> LoadResult | IngestError:
+    """Loads the bundled ``data_agent/sample_data/default/shipments.csv`` as table ``data``.
 
     Every new session (Streamlit or ADK Web) starts from this so questions can be
     asked before any upload (design section 1).
@@ -149,12 +261,38 @@ def load_sample(session_dir: str | Path) -> IngestResult | IngestError:
         session_dir: Per-session directory that will hold ``data.db``.
 
     Returns:
-        The :func:`load_file` result for the sample file.
+        The load result for the sample file.
 
     Side Effects:
-        Same as :func:`load_file`.
+        Same as :func:`load_parsed`.
     """
-    return load_file(SAMPLE_FILE.name, SAMPLE_FILE.read_bytes(), session_dir)
+    parsed = read_table(SAMPLE_FILE.name, SAMPLE_FILE.read_bytes())
+    if isinstance(parsed, IngestError):
+        return parsed
+    return _build_result([(SAMPLE_TABLE, parsed)], Path(session_dir))
+
+
+def _build_result(named: list[tuple[str, ParsedTable]], session_dir: Path) -> LoadResult:
+    """Writes the named tables and assembles the :class:`LoadResult`."""
+    db_path = _write_sqlite(named, session_dir)
+    tables = [
+        TableInfo(
+            file_name=p.file_name,
+            table=name,
+            row_count=len(p.df),
+            column_count=p.df.shape[1],
+            preview=p.df.head(PREVIEW_ROWS),
+            ignored_sheets=p.ignored_sheets,
+            sheet_name=p.sheet_name,
+        )
+        for name, p in named
+    ]
+    return LoadResult(
+        db_path=db_path,
+        tables=tables,
+        column_map={name: p.column_map for name, p in named},
+        schema_summary="\n\n".join(schema_block(name, p) for name, p in named),
+    )
 
 
 def _read_csv(file_bytes: bytes) -> tuple[pd.DataFrame, None, list[str]] | IngestError:
@@ -357,12 +495,11 @@ def _to_iso(s: pd.Series) -> pd.Series:
     return out.astype(object).where(s.notna(), None)
 
 
-def _write_sqlite(df: pd.DataFrame, sql_types: dict[str, str], session_dir: Path) -> Path:
-    """Writes the dataframe to table ``data``, replacing ``data.db`` atomically.
+def _write_sqlite(named: list[tuple[str, ParsedTable]], session_dir: Path) -> Path:
+    """Writes the tables to a new database, replacing ``data.db`` atomically.
 
     Args:
-        df: Cleaned and type-converted data.
-        sql_types: SQLite column type per column.
+        named: ``(table_name, parsed_file)`` pairs.
         session_dir: Directory to hold the database file.
 
     Returns:
@@ -370,7 +507,7 @@ def _write_sqlite(df: pd.DataFrame, sql_types: dict[str, str], session_dir: Path
 
     Side Effects:
         Creates ``session_dir``. The data goes to a temp file that is moved over
-        ``data.db`` only after a successful write, so a failure (exception
+        ``data.db`` only after every table was written, so a failure (exception
         re-raised) leaves any existing ``data.db`` untouched.
     """
     session_dir.mkdir(parents=True, exist_ok=True)
@@ -379,7 +516,8 @@ def _write_sqlite(df: pd.DataFrame, sql_types: dict[str, str], session_dir: Path
     try:
         tmp_path.unlink(missing_ok=True)
         with closing(sqlite3.connect(tmp_path)) as conn:
-            df.to_sql(TABLE_NAME, conn, index=False, dtype=sql_types)
+            for name, p in named:
+                p.df.to_sql(name, conn, index=False, dtype=p.sql_types)
             conn.commit()
         os.replace(tmp_path, db_path)  # atomic; the connection above is already closed
     except Exception:

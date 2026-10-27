@@ -1,4 +1,4 @@
-"""Tests for data_agent.tools (Phase 1.3)."""
+"""Tests for data_agent.tools (Phase 1.3; the table is ``sales`` since Phase 6.1)."""
 
 import sqlite3
 from types import SimpleNamespace
@@ -10,35 +10,16 @@ from data_agent import tools
 
 def row_count(loaded):
     with sqlite3.connect(loaded.db_path) as conn:
-        return conn.execute("SELECT COUNT(*) FROM data").fetchone()[0]
-
-
-def test_table_info(ctx):
-    r = tools.get_table_info(ctx)
-    assert (r["row_count"], r["column_count"]) == (50, 5)
-    assert {"name": "order_date", "original_name": "order date", "type": "TEXT"} in r["columns"]
-
-
-def test_sample_rows_capped(ctx):
-    assert tools.get_sample_rows(3, tool_context=ctx)["row_count"] == 3
-    assert tools.get_sample_rows(99, tool_context=ctx)["row_count"] == 20
-
-
-def test_column_stats(ctx):
-    num = tools.get_column_stats("sales_amount", tool_context=ctx)
-    assert num["count"] == 50 and {"min", "max", "mean", "median"} <= set(num)
-    assert tools.get_column_stats("category", tool_context=ctx)["distinct_count"] == 5
-    bad = tools.get_column_stats("nope", tool_context=ctx)
-    assert bad["status"] == "error" and "order_id" in bad["error_message"]
+        return conn.execute("SELECT COUNT(*) FROM sales").fetchone()[0]
 
 
 @pytest.mark.parametrize(
     "query",
     [
-        "DELETE FROM data",
-        "WITH x AS (SELECT 1) DELETE FROM data",
-        "SELECT 1; DROP TABLE data",
-        "PRAGMA table_info(data)",
+        "DELETE FROM sales",
+        "WITH x AS (SELECT 1) DELETE FROM sales",
+        "SELECT 1; DROP TABLE sales",
+        "PRAGMA table_info(sales)",
         "SELECT 1 /* attach */",
     ],
 )
@@ -50,11 +31,11 @@ def test_writes_rejected_and_data_unchanged(query, ctx, loaded):
 def test_connection_is_read_only(ctx):
     with tools.closing(tools._connect_ro(ctx)) as conn:
         with pytest.raises(sqlite3.Error):
-            conn.execute("WITH x AS (SELECT 1) DELETE FROM data")
+            conn.execute("WITH x AS (SELECT 1) DELETE FROM sales")
 
 
 def test_run_sql_ok_with_trailing_semicolon(ctx):
-    r = tools.run_sql("SELECT COUNT(*) AS n FROM data;", tool_context=ctx)
+    r = tools.run_sql("SELECT COUNT(*) AS n FROM sales;", tool_context=ctx)
     assert r["status"] == "success" and r["rows"] == [[50]]
 
 
@@ -80,3 +61,18 @@ def test_timeout(ctx, monkeypatch):
 def test_no_file_loaded_is_error_not_exception():
     r = tools.run_sql("SELECT 1", tool_context=SimpleNamespace(state={}))
     assert r["status"] == "error"
+
+
+def test_run_sql_joins_two_uploaded_tables(tmp_path):
+    """Phase 6.2: the fixture pair customers.csv / orders.csv answers a cross-table question."""
+    from data_agent.ingest import load_files
+    from tests.conftest import sample_path
+
+    r = load_files([(n, sample_path(n).read_bytes()) for n in ("customers.csv", "orders.csv")], tmp_path / "s")
+    ctx = SimpleNamespace(state={"db_path": str(r.db_path)})
+    out = tools.run_sql(
+        'SELECT c."name", SUM(o."amount") FROM "orders" o JOIN "customers" c ON c."customer_id" = o."customer_id" '
+        'GROUP BY c."customer_id" ORDER BY 2 DESC LIMIT 1',
+        tool_context=ctx,
+    )
+    assert out["status"] == "success" and out["rows"] == [["Grace Hopper", 499.99]]

@@ -16,7 +16,7 @@ def post(path, body):
 
 
 # The request body is the initial state itself (not wrapped in {"state": ...}).
-state = {'upload_name': f.name, 'upload_b64': base64.b64encode(f.read_bytes()).decode()}
+state = {'uploads': [{'name': f.name, 'b64': base64.b64encode(f.read_bytes()).decode()}]}
 print('create session:', post(f'/apps/{APP}/users/{USER}/sessions/{sid}', state)['id'])
 events = post('/run', {'app_name': APP, 'user_id': USER, 'session_id': sid,
                        'new_message': {'role': 'user', 'parts': [{'text': 'How many records are there?'}]}})

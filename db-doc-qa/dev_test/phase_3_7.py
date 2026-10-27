@@ -150,11 +150,11 @@ with sync_playwright() as p:
         page.close()
 
     print('--- regression: v1 questions on an uploaded sales.csv ---')
-    df = pd.read_csv(DB / 'sales.csv')
+    df = pd.read_csv(DB / 'multi_db' / 'sales.csv')
     avg = round(df['sales_amount'].mean(), 2)
     top = df.groupby('category')['revenue'].sum().idxmax()
     page = open_app(b)
-    table_upload(page, DB / 'sales.csv')
+    table_upload(page, DB / 'multi_db' / 'sales.csv')
     check('sales.csv loaded', 'Current data: sales.csv' in body(page))
     answers = {}
     for q in ['How many records are there?', 'What is the average sales amount?',

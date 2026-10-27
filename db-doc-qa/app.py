@@ -1,9 +1,11 @@
-"""Streamlit front end: upload a table and policy documents, then chat (design sections 1 and 7).
+"""Streamlit front end: upload data tables and policy documents, then chat (design sections 1 and 7).
 
 Every browser session starts with ``data_agent/sample_data/default/shipments.csv`` and the
-sample policy documents loaded. A valid table upload or document change (add, replace,
-remove) starts a new agent session and resets the chat; an invalid one shows an error and
-changes nothing. At most 3 documents can be loaded. Each answer's expander shows the
+sample policy documents loaded. Up to 3 data files (CSV/XLSX) can be loaded, each as its own
+table; the first upload replaces the sample, a file with a loaded file's name replaces it in
+place, and removing every file brings the sample back. A valid data-file or document change
+(add, replace, remove) starts a new agent session and resets the chat; an invalid one shows
+an error and changes nothing. At most 3 documents can be loaded. Each answer's expander shows the
 classified intent and every tool call. Run with ``uv run streamlit run app.py``.
 
 Two modes, chosen by the ``API_URL`` environment variable:
@@ -26,16 +28,18 @@ import streamlit as st
 import ui_client
 from data_agent import doc_ingest, sessions
 from data_agent.ingest import (
+    MAX_TABLES,
     SAMPLE_DOCS_DIR,
-    SAMPLE_FILE,
     IngestError,
-    IngestResult,
-    load_file,
+    LoadResult,
+    load_files,
     load_sample,
+    read_table,
 )
 
 MAX_DOCS = 3
 DOC_LIMIT_MESSAGE = "Up to 3 documents per session. Remove one first."
+TABLE_LIMIT_MESSAGE = f"Up to {MAX_TABLES} data files per session. Remove one first."
 
 
 @st.cache_resource
@@ -45,7 +49,7 @@ def _purge_once() -> bool:
     return True
 
 
-def _adk_state(result: IngestResult) -> dict:
+def _adk_state(result: LoadResult) -> dict:
     """Builds the ADK session state the agent and tools read."""
     return {
         "db_path": str(result.db_path),
@@ -54,16 +58,30 @@ def _adk_state(result: IngestResult) -> dict:
     }
 
 
-def _set_data(result: IngestResult, name: str) -> None:
-    """Remembers what is loaded so the UI can show it on every rerun."""
-    st.session_state.data_info = {
-        "name": name,
-        "rows": result.row_count,
-        "cols": result.column_count,
-        "preview": result.preview,
-        "ignored": result.ignored_sheets,
-        "sheet": result.sheet_name,
-    }
+def _table_entries(result: LoadResult, uploads: list[dict] | None) -> list[dict]:
+    """Builds the entries the UI keeps for the loaded tables.
+
+    Args:
+        result: The local load result; its tables are in the same order as ``uploads``.
+        uploads: ``[{name, b64}]`` of the data files in effect, or None for the sample.
+
+    Returns:
+        One ``{name, b64, table, rows, cols, preview, sheet, ignored}`` per table
+        (``b64`` is None for the sample). The bytes are kept so the files can be reloaded.
+    """
+    return [
+        {
+            "name": t.file_name,
+            "b64": uploads[i]["b64"] if uploads else None,
+            "table": t.table,
+            "rows": t.row_count,
+            "cols": t.column_count,
+            "preview": t.preview,
+            "sheet": t.sheet_name,
+            "ignored": t.ignored_sheets,
+        }
+        for i, t in enumerate(result.tables)
+    ]
 
 
 def _api_mode() -> bool:
@@ -71,11 +89,11 @@ def _api_mode() -> bool:
     return ui_client.api_url() is not None
 
 
-def _upload_state(upload: dict | None) -> dict:
-    """Initial backend session state: the upload, or ``{}`` for the sample data."""
-    if upload is None:
+def _upload_state(uploads: list[dict] | None) -> dict:
+    """Initial backend session state: the data files, or ``{}`` for the sample data."""
+    if uploads is None:
         return {}
-    return {"upload_name": upload["name"], "upload_b64": upload["b64"]}
+    return {"uploads": uploads}
 
 
 def _doc_entry(name: str, data: bytes, prepared: doc_ingest.PreparedDoc) -> dict:
@@ -108,23 +126,23 @@ def _docs_state(entries: list[dict], custom: bool) -> list[dict] | None:
     return [{"name": e["name"], "b64": e["b64"]} for e in entries]
 
 
-def _session_state(upload: dict | None, entries: list[dict], custom: bool) -> dict:
-    """Initial backend session state: the table upload, plus ``docs`` once they were changed."""
-    state = _upload_state(upload)
+def _session_state(uploads: list[dict] | None, entries: list[dict], custom: bool) -> dict:
+    """Initial backend session state: the data files, plus ``docs`` once they were changed."""
+    state = _upload_state(uploads)
     docs = _docs_state(entries, custom)
     if docs is not None:
         state["docs"] = docs
     return state
 
 
-def _api_new_session(upload: dict | None, entries: list[dict], custom: bool) -> None:
+def _api_new_session(uploads: list[dict] | None, entries: list[dict], custom: bool) -> None:
     """Creates a backend session and makes it current.
 
     A fresh id is used each time so a stale ``data.db`` or ``docs.db`` left on the
     backend under the old id is never reused.
 
     Args:
-        upload: ``{"name", "b64"}`` of the uploaded table file, or None for the sample.
+        uploads: ``[{"name", "b64"}]`` of the uploaded data files, or None for the sample.
         entries: The documents to load (see :func:`_doc_entry`).
         custom: False while the documents are still the unchanged samples; the backend
             then loads them itself and nothing is sent.
@@ -137,8 +155,8 @@ def _api_new_session(upload: dict | None, entries: list[dict], custom: bool) -> 
     new_id = uuid.uuid4().hex
     # The first request after the backend scaled to zero can take about 30 seconds.
     with st.spinner("Connecting to the service (the first request after idle can take a minute)..."):
-        ui_client.create_session(new_id, _session_state(upload, entries, custom))
-    old_id, ss.api_sid, ss.upload = ss.get("api_sid"), new_id, upload
+        ui_client.create_session(new_id, _session_state(uploads, entries, custom))
+    old_id, ss.api_sid, ss.uploads = ss.get("api_sid"), new_id, uploads
     if old_id:
         _api_delete(old_id)
 
@@ -202,13 +220,13 @@ def _local_new_session(table_state: dict, entries: list[dict], custom: bool) -> 
 
 
 def _replace_session(
-    result: IngestResult | None, upload: dict | None, entries: list[dict], custom: bool
+    result: LoadResult | None, uploads: list[dict] | None, entries: list[dict], custom: bool
 ) -> None:
-    """Starts a new agent session for a changed table or document list and clears the chat.
+    """Starts a new agent session for a changed data-file or document list and clears the chat.
 
     Args:
-        result: The new local ingest result (in-process state), or None to keep the table.
-        upload: ``{"name", "b64"}`` of the table upload now in effect (None = sample).
+        result: The new local load result (in-process state), or None to keep the tables.
+        uploads: ``[{"name", "b64"}]`` of the data files now in effect (None = sample).
         entries: The documents now in effect.
         custom: Whether the documents differ from the samples.
 
@@ -218,11 +236,11 @@ def _replace_session(
     """
     ss = st.session_state
     if _api_mode():
-        _api_new_session(upload, entries, custom)
+        _api_new_session(uploads, entries, custom)
     else:
         table_state = _adk_state(result) if result is not None else ss.table_state
         _local_new_session(table_state, entries, custom)
-        ss.table_state, ss.upload = table_state, upload
+        ss.table_state, ss.uploads = table_state, uploads
     ss.messages = []
 
 
@@ -245,13 +263,13 @@ def _start_session() -> None:
             st.error(f"Could not start a session on the service: {exc}")
             st.stop()
     else:
-        ss.table_state, ss.upload = _adk_state(result), None
+        ss.table_state, ss.uploads = _adk_state(result), None
         ss.agent = _new_agent_session(dict(ss.table_state), ss.session_id)
     ss.messages = []
     ss.doc_entries, ss.docs_custom = entries, False
     ss.last_upload = ss.last_doc_upload = None
     ss.upload_error = ss.doc_error = None
-    _set_data(result, SAMPLE_FILE.name + " (sample)")
+    ss.table_entries, ss.tables_custom = _table_entries(result, None), False
     ss.last_active = time.time()
 
 
@@ -269,8 +287,45 @@ def _ensure_session() -> None:
     sessions.sweep_stale()
 
 
+def _apply_tables(entries: list[dict], custom: bool) -> bool:
+    """Makes ``entries`` the session's data files (new agent session, chat cleared).
+
+    The files are reloaded together, so table names always follow the list order.
+
+    Args:
+        entries: The complete new list (see :func:`_table_entries`); ignored when ``custom``
+            is false.
+        custom: False to go back to the bundled sample.
+
+    Returns:
+        True if applied. Otherwise the message is stored in ``upload_error``, and the data
+        files and chat stay as they were.
+    """
+    ss = st.session_state
+    uploads = [{"name": e["name"], "b64": e["b64"]} for e in entries] if custom else None
+    if custom:
+        result = load_files([(u["name"], base64.b64decode(u["b64"])) for u in uploads], ss.session_dir)
+    else:
+        result = load_sample(ss.session_dir)
+    if isinstance(result, IngestError):
+        ss.upload_error = result.message  # keep data, ADK session and chat as they are
+        return False
+    try:
+        _replace_session(result, uploads, ss.doc_entries, ss.docs_custom)
+    except ui_client.ApiError as exc:
+        ss.upload_error = f"Could not send the file to the service: {exc}"
+        return False  # data, backend session and chat stay as they were
+    ss.table_entries, ss.tables_custom, ss.upload_error = _table_entries(result, uploads), custom, None
+    return True
+
+
 def _handle_upload(uploaded) -> None:
-    """Loads a newly uploaded table file, or records why it was rejected."""
+    """Validates a newly uploaded data file and adds or replaces it, or records why it was rejected.
+
+    The first upload replaces the sample. A file with the same name (ignoring case) as a
+    loaded file replaces it, keeping its place. A rejected file leaves the data files, the
+    agent session and the chat unchanged.
+    """
     ss = st.session_state
     if uploaded is None:
         ss.last_upload, ss.upload_error = None, None
@@ -278,18 +333,20 @@ def _handle_upload(uploaded) -> None:
     if uploaded.file_id == ss.last_upload:  # same file as the previous rerun
         return
     ss.last_upload = uploaded.file_id
-    result = load_file(uploaded.name, uploaded.getvalue(), ss.session_dir)
-    if isinstance(result, IngestError):
-        ss.upload_error = result.message  # keep data, ADK session and chat as they are
+    data = uploaded.getvalue()
+    parsed = read_table(uploaded.name, data)
+    if isinstance(parsed, IngestError):
+        ss.upload_error = parsed.message
         return
-    upload = {"name": uploaded.name, "b64": base64.b64encode(uploaded.getvalue()).decode()}
-    try:
-        _replace_session(result, upload, ss.doc_entries, ss.docs_custom)
-    except ui_client.ApiError as exc:
-        ss.upload_error = f"Could not send the file to the service: {exc}"
-        return  # data, backend session and chat stay as they were
-    ss.upload_error = None
-    _set_data(result, uploaded.name)
+    entry = {"name": parsed.file_name, "b64": base64.b64encode(data).decode()}
+    current = ss.table_entries if ss.tables_custom else []
+    same = [i for i, e in enumerate(current) if e["name"].lower() == entry["name"].lower()]
+    if same:
+        _apply_tables([entry if i == same[0] else e for i, e in enumerate(current)], True)
+    elif len(current) >= MAX_TABLES:
+        ss.upload_error = TABLE_LIMIT_MESSAGE
+    else:
+        _apply_tables([*current, entry], True)
 
 
 def _apply_docs(entries: list[dict]) -> bool:
@@ -304,7 +361,7 @@ def _apply_docs(entries: list[dict]) -> bool:
     """
     ss = st.session_state
     try:
-        _replace_session(None, ss.get("upload"), entries, True)
+        _replace_session(None, ss.get("uploads"), entries, True)
     except ui_client.ApiError as exc:
         ss.doc_error = f"Could not send the documents to the service: {exc}"
         return False
@@ -337,10 +394,9 @@ def _handle_doc_upload(uploaded) -> None:
     if not replacing and len(ss.doc_entries) >= MAX_DOCS:
         ss.doc_error = DOC_LIMIT_MESSAGE
         return
-    if replacing:
-        _apply_docs([entry if e["name"] == name else e for e in ss.doc_entries])
-    else:
-        _apply_docs([*ss.doc_entries, entry])
+    entries = [entry if e["name"] == name else e for e in ss.doc_entries] if replacing else [*ss.doc_entries, entry]
+    if _apply_docs(entries):
+        st.rerun()  # the document list is drawn above this uploader, so it needs another pass
 
 
 def _ask(question: str) -> tuple[str, list[dict], str | None]:
@@ -421,6 +477,26 @@ def _render_documents() -> None:
                 st.rerun()
 
 
+def _render_tables() -> None:
+    """Lists the loaded data files (table name and size, Remove for uploads) and previews one."""
+    ss = st.session_state
+    st.subheader("Data files")
+    for e in ss.table_entries:
+        cols = st.columns([4, 1])
+        sample = "" if ss.tables_custom else " (sample)"
+        cols[0].markdown(f"**{e['name']}**{sample}  \ntable `{e['table']}` · {e['rows']} rows × {e['cols']} columns")
+        if ss.tables_custom and cols[1].button("Remove", key=f"remove_table_{e['name']}"):
+            if _apply_tables([x for x in ss.table_entries if x["name"] != e["name"]], bool(len(ss.table_entries) > 1)):
+                st.rerun()
+        if e["ignored"]:
+            st.warning(f"{e['name']}: only the first sheet was loaded. Ignored sheets: " + ", ".join(e["ignored"]))
+    tables = [e["table"] for e in ss.table_entries]
+    shown = st.selectbox("Preview table", tables, key="preview_table") if len(tables) > 1 else tables[0]
+    preview = next((e["preview"] for e in ss.table_entries if e["table"] == shown), None)
+    if preview is not None:
+        st.dataframe(preview, width="stretch")
+
+
 def main() -> None:
     """Renders the page: data, documents and uploads on the left, chat on the right."""
     st.set_page_config(page_title="Database & Document Q&A", page_icon="📊", layout="wide")
@@ -433,7 +509,7 @@ def main() -> None:
     # The left side runs first so an upload resets the chat before the right side draws it.
     with left:
         uploaded = st.file_uploader(
-            "Replace the data with your own file",
+            f"Add or replace a data file (CSV or XLSX, up to {MAX_TABLES})",
             type=["csv", "xlsx"],
             key=f"uploader_{ss.get('uploader_generation', 0)}",
         )
@@ -441,13 +517,7 @@ def main() -> None:
         if ss.upload_error:
             st.error(ss.upload_error)
 
-        info = ss.data_info
-        sheet = f" (sheet: {info['sheet']})" if info["sheet"] else ""
-        st.subheader(f"Current data: {info['name']}{sheet}")
-        st.caption(f"{info['rows']} rows × {info['cols']} columns")
-        if info["ignored"]:
-            st.warning("Only the first sheet was loaded. Ignored sheets: " + ", ".join(info["ignored"]))
-        st.dataframe(info["preview"], width="stretch")
+        _render_tables()
 
         _render_documents()
         doc_file = st.file_uploader(
@@ -465,7 +535,7 @@ def main() -> None:
 
     with right:
         chat_box = st.container(height=600)
-        typed = st.chat_input("Ask about the shipments or the policy documents")
+        typed = st.chat_input("Ask about your data or the policy documents")
         # A question held over from a session reset is answered on the rerun that follows it.
         retrying = typed is None and "pending_question" in ss
         question = typed or ss.pop("pending_question", None)
@@ -493,7 +563,7 @@ def main() -> None:
                             answer, calls, intent = f"Sorry, something went wrong: {exc}", [], None
                     if lost_session:
                         try:
-                            _api_new_session(ss.upload, ss.doc_entries, ss.docs_custom)
+                            _api_new_session(ss.uploads, ss.doc_entries, ss.docs_custom)
                         except ui_client.ApiError as exc:
                             lost_session, answer = False, f"Sorry, something went wrong: {exc}"
                     if not lost_session:

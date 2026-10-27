@@ -7,10 +7,10 @@ from google.adk.sessions import InMemorySessionService
 from google.genai import types
 
 from data_agent.agent import root_agent
-from data_agent.ingest import load_file
+from data_agent.ingest import load_files
 
-p = Path("sample_data/database/sales.csv")
-r = load_file(p.name, p.read_bytes(), Path(tempfile.mkdtemp()) / 'session')
+p = Path("sample_data/database/multi_db/sales.csv")
+r = load_files([(p.name, p.read_bytes())], Path(tempfile.mkdtemp()) / 'session')
 state = {'db_path': str(r.db_path), 'column_map': r.column_map, 'schema_summary': r.schema_summary}
 
 

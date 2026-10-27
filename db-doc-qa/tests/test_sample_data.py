@@ -1,8 +1,8 @@
 """Tests for the sample_data layout and the default sample files (Phase 3.1)."""
 
 from data_agent import ingest
-from data_agent.ingest import IngestResult, load_sample
-from tests.conftest import DB_SAMPLES, DOC_SAMPLES
+from data_agent.ingest import LoadResult, load_sample
+from tests.conftest import DB_SAMPLES, DOC_SAMPLES, MULTI_DB
 
 
 def test_default_sample_lives_in_the_package_default_folder():
@@ -22,7 +22,7 @@ def test_default_documents_cover_pdf_and_text():
 
 
 def test_test_fixtures_are_split_into_database_and_document_folders():
-    db = {p.suffix for p in DB_SAMPLES.iterdir()}
+    db = {p.suffix for p in [*DB_SAMPLES.iterdir(), *MULTI_DB.iterdir()] if p.is_file()}
     docs = {p.suffix for p in DOC_SAMPLES.iterdir()}
     assert db <= {".csv", ".xlsx", ".txt"}  # notes.txt is the unsupported-table-type fixture
     assert docs == {".pdf", ".txt", ".md"}
@@ -38,4 +38,4 @@ def test_markdown_fixture_has_hash_headings_and_clauses():
 
 
 def test_default_sample_still_loads(tmp_path):
-    assert isinstance(load_sample(tmp_path / "s"), IngestResult)
+    assert isinstance(load_sample(tmp_path / "s"), LoadResult)

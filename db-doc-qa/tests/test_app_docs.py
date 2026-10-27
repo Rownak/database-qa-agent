@@ -84,6 +84,7 @@ def test_add_a_document(at, backend):
     assert not at.error and at.session_state.messages == []
     assert _names(_current(at, backend)) == [SAMPLES[1], SAMPLES[2], "structured.md"]
     assert [e["name"] for e in at.session_state.doc_entries][-1] == "structured.md"
+    assert any("structured.md" in m.value for m in at.markdown)  # listed in the same run, not the next one
 
 
 def test_same_name_replaces_the_document_in_place(at, backend):
@@ -146,7 +147,7 @@ def test_table_upload_after_document_change_keeps_the_documents(at, backend):
     f = DB_SAMPLES / "multi_sheet.xlsx"
     at.file_uploader[0].upload(f.name, f.read_bytes()).run()
     state = _current(at, backend)
-    assert state["upload_name"] == f.name and _names(state) == [SAMPLES[1], SAMPLES[2]]
+    assert [u["name"] for u in state["uploads"]] == [f.name] and _names(state) == [SAMPLES[1], SAMPLES[2]]
 
 
 def test_document_change_keeps_the_table_upload(at, backend):
@@ -154,7 +155,7 @@ def test_document_change_keeps_the_table_upload(at, backend):
     at.file_uploader[0].upload(f.name, f.read_bytes()).run()
     _remove(at, SAMPLES[0])
     state = _current(at, backend)
-    assert state["upload_name"] == f.name and _names(state) == [SAMPLES[1], SAMPLES[2]]
+    assert [u["name"] for u in state["uploads"]] == [f.name] and _names(state) == [SAMPLES[1], SAMPLES[2]]
 
 
 def test_lost_backend_session_is_recreated_with_the_current_documents(at, backend):

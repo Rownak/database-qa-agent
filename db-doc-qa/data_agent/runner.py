@@ -31,23 +31,24 @@ APP_NAME = "sheet_qa"
 USER_ID = "user"
 
 
-def files_state(table: Path | None, docs: list[Path] | None) -> dict:
-    """Builds the session state that holds a table and documents given as files.
+def files_state(tables: list[Path] | None, docs: list[Path] | None) -> dict:
+    """Builds the session state that holds data files and documents given as files.
 
     Args:
-        table: A CSV or XLSX file, or ``None`` for the bundled sample table.
+        tables: CSV or XLSX files (up to three), or ``None`` for the bundled sample table.
         docs: Document files, ``None`` for the bundled sample documents, or ``[]`` for no
             documents.
 
     Returns:
-        A dict for ``AgentSession``: ``upload_name`` and ``upload_b64`` when a table is
-        given, and ``docs`` (``[{name, b64}]``) when ``docs`` is not ``None``. The agent
-        builds ``data.db`` and ``docs.db`` from it on the first turn.
+        A dict for ``AgentSession``: ``uploads`` (``[{name, b64}]``) when tables are given,
+        and ``docs`` (``[{name, b64}]``) when ``docs`` is not ``None``. The agent builds
+        ``data.db`` and ``docs.db`` from it on the first turn.
     """
     state: dict = {}
-    if table is not None:
-        state["upload_name"] = Path(table).name
-        state["upload_b64"] = base64.b64encode(Path(table).read_bytes()).decode()
+    if tables is not None:
+        state["uploads"] = [
+            {"name": Path(p).name, "b64": base64.b64encode(Path(p).read_bytes()).decode()} for p in tables
+        ]
     if docs is not None:
         state["docs"] = [
             {"name": Path(p).name, "b64": base64.b64encode(Path(p).read_bytes()).decode()} for p in docs

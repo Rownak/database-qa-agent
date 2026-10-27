@@ -40,9 +40,9 @@ def patched(monkeypatch):
 def test_files_state_variants():
     assert files_state(None, None) == {}
     assert files_state(None, [])["docs"] == []
-    state = files_state(SALES, [next(DOC_SAMPLES.iterdir())])
-    assert state["upload_name"] == "sales.csv"
-    assert base64.b64decode(state["upload_b64"]) == SALES.read_bytes()
+    state = files_state([SALES], [next(DOC_SAMPLES.iterdir())])
+    assert [u["name"] for u in state["uploads"]] == ["sales.csv"]
+    assert base64.b64decode(state["uploads"][0]["b64"]) == SALES.read_bytes()
     assert [d["name"] for d in state["docs"]] == [next(DOC_SAMPLES.iterdir()).name]
 
 
@@ -88,3 +88,8 @@ def test_close_deletes_the_session_and_optionally_the_folder(patched, tmp_path, 
 def test_each_session_is_isolated(patched):
     a, b = AgentSession(AgentConfig(), {}), AgentSession(AgentConfig(), {})
     assert a.session_id != b.session_id and a.adk is not b.adk
+
+
+def test_files_state_holds_several_data_files():
+    state = files_state([SALES, DB_SAMPLES / "sales.xlsx"], None)
+    assert [u["name"] for u in state["uploads"]] == ["sales.csv", "sales.xlsx"] and "docs" not in state

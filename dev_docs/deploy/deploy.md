@@ -49,7 +49,7 @@ App name is the agent folder: `data_agent`. Interactive docs at `/docs`.
 - Run: `POST /run` with `{"app_name": "data_agent", "user_id": "...", "session_id": "...", "new_message": {"role": "user", "parts": [{"text": "..."}]}}`. Returns a JSON **list** of events. Tool calls are `content.parts[].functionCall` (`name`, `args`); tool results are `functionResponse`; the answer is the last event's `content.parts[].text` (ends with a `Source:` line).
 - Delete session: `DELETE /apps/data_agent/users/{user}/sessions/{session}`.
 - An unknown session on `/run` returns 404 (used by the UI to detect a lost session).
-- Optional state keys: `upload_name`, `upload_b64` (backend builds `data.db` from them). The backend sets `db_path`, `column_map`, `schema_summary`, and `load_error` when the upload was rejected.
+- Optional state keys: `uploads` (`[{name, b64}]`, up to 3 files; the backend builds `data.db` with one table per file; replaced `upload_name` / `upload_b64` in Sprint 6) and `docs`. The backend sets `db_path`, `column_map` (`{table: {column: original}}`), `schema_summary`, and `load_error` when a data file was skipped.
 - The generated Dockerfile uses `python:3.11-slim` and installs `google-adk` itself, so `data_agent/requirements.txt` lists only pandas, openpyxl and python-dotenv.
 
 # Backend deployed (Phase 2.4, 2026-10-19)
@@ -85,3 +85,11 @@ App name is the agent folder: `data_agent`. Interactive docs at `/docs`.
 - Memory (99th percentile, Cloud Monitoring, 1.5 h covering the browser runs): backend 46%, UI 42% of 512 MiB. Below the 80% threshold, so no `--memory=1Gi`.
 - `gcloud` from Git Bash: the Cloud SDK path contains a space, so call it as `cmd //c "gcloud ..."` (with `bin` on `PATH`), or put the command in a `.cmd` file when it has quoted arguments.
 - Remove the `RESTART_MARK` test variable when convenient: `gcloud run services update data-qa-api --region us-central1 --remove-env-vars=RESTART_MARK`.
+
+# Redeployed for Sprint 6 (Phase 6.3, 2026-10-27)
+- Up to three CSV/XLSX files per session, one table each. Session state key `uploads` replaces `upload_name` / `upload_b64`; **sessions created by the old UI do not work on the new backend**, so deploy both together (done).
+- Backend `data-qa-api`: revision `data-qa-api-00014-hcv` from `adk deploy`, then `00015-7j6` after removing the Vertex env vars (serves 100%). Settings unchanged (1 CPU, 512Mi, max 1 instance, concurrency 10, timeout 120s). `/list-apps` returned `["data_agent"]` with a token; 403 without.
+- UI `data-qa-ui`: revision `data-qa-ui-00009-qp9` (100%). Settings unchanged. The staged context needed no new files (`scripts/stage_ui_context.py` already lists `ingest.py`).
+- Previous revisions for rollback: `data-qa-api-00013-fj4`, `data-qa-ui-00008-7gw` (`gcloud run services update-traffic <service> --region us-central1 --to-revisions=<revision>=100`). Roll both back together.
+- Hosted smoke test: `dev_test/phase_6_2_browser.py` with `UI_URL` set to the UI URL passed all 25 checks; `dev_test/phase_6_3.py` (API round trip with two uploads) passed. Details in `dev_docs/execution_logs/sprint_6_3.md`.
+- Logs (last hour): 0 ERROR entries on either service. Memory p99: backend 44.9%, UI 40.0% of 512 MiB.
