@@ -68,6 +68,8 @@ class EmbeddingConfig(BaseModel):
     model: str = "gemini-embedding-001"
     dim: int = 768
     batch: int = Field(100, le=100)
+    provider: Literal["gemini", "ollama"] = "gemini"   # ollama: local server at base_url
+    base_url: str = "http://localhost:11434"            # ollama only
 
 class ChunkingConfig(BaseModel):
     chunk_words: int = Field(160, gt=20)
@@ -325,3 +327,4 @@ Steps 1–2 can be merged into one phase if preferred.
 - **Cost per case:** each agent-mode case rebuilds `docs.db` (one embedding batch) plus 2–4 model calls. This is fine for about 20–50 cases. If it becomes a problem, pre-build the databases once and pass `docs_db_path` / `docs_summary` in the state, which `ensure_data` already accepts without rebuilding.
 - **Changing the agent config in the app:** only through `DATA_AGENT_CONFIG` on the server or locally. The UI gets no config controls in this design.
 - **To confirm:** whether `temperature: 0.0` should also become the app default (this design keeps today's model default to preserve behaviour), and the sprint numbering for the steps in §7.
+- **Embedding rate limits:** the Gemini embedding API can rate-limit bulk indexing (many tables or chunks), which fails with `ClientError` and drops retrieval to BM25 only. For evaluation, the embedding provider is chosen in the run config (`agent.embedding.provider: gemini | ollama`, default `gemini`); `ollama` with `nomic-embed-text` runs locally. (Sprint 7, Phase 7.2a.) A bundle must be rebuilt when the provider changes, and results from different providers are not comparable.

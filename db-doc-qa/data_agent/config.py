@@ -35,8 +35,12 @@ MetricName = Literal[
     "answer_f1",
     "object_f1",
     "coverage",
+    "exact_match",
+    "squad_f1",
 ]
 ALL_METRICS: list[str] = list(get_args(MetricName))
+# the short-answer metrics are opt-in, so the default result files keep the keys they had before
+DEFAULT_METRICS: list[str] = [m for m in ALL_METRICS if m not in ("exact_match", "squad_f1")]
 
 _FROZEN = ConfigDict(extra="forbid", frozen=True)  # a YAML typo fails fast; a resolved config cannot change
 
@@ -61,16 +65,21 @@ class EmbeddingConfig(BaseModel):
     """Embedding model settings for document chunks and queries.
 
     Attributes:
-        model: Embedding model id.
-        dim: Output dimensionality.
-        batch: Texts per embedding request (the API accepts at most 100).
+        provider: ``gemini`` (the default) or ``ollama`` (a local server, for evaluations that
+            would hit the Gemini embedding rate limit).
+        model: Embedding model id (for example ``nomic-embed-text:latest`` with ``ollama``).
+        dim: Output dimensionality; with ``ollama`` it must equal the model's vector size.
+        batch: Texts per embedding request (the Gemini API accepts at most 100).
+        base_url: Ollama server URL; unused by ``gemini``.
     """
 
     model_config = _FROZEN
 
+    provider: Literal["gemini", "ollama"] = "gemini"
     model: str = "gemini-embedding-001"
     dim: int = Field(768, gt=0)
     batch: int = Field(100, gt=0, le=100)
+    base_url: str = "http://localhost:11434"
 
 
 class ChunkingConfig(BaseModel):
@@ -116,16 +125,25 @@ class AgentConfig(BaseModel):
         profile: Which instruction and description the agent gets: ``shipments`` (the
             default; the app and the deployed agent) or ``lakequest`` (concise answers
             over a multi-table lake, for the LakeQuest evaluation).
+        instruction_file: A UTF-8 text file (relative to ``db-doc-qa/`` unless absolute) that
+            replaces the instruction of ``profile``; the description stays the profile's. It
+            uses the same state placeholders (``{schema_summary}``, ``{docs_summary}``,
+            ``{load_error?}``). ``None`` keeps the built-in instruction.
     """
 
     model_config = _FROZEN
 
     profile: Literal["shipments", "lakequest"] = "shipments"
+    instruction_file: Path | None = None
     model: ModelConfig = Field(default_factory=ModelConfig)
     intent_enabled: bool = True  # False skips classification (ablation)
     embedding: EmbeddingConfig = Field(default_factory=EmbeddingConfig)
     chunking: ChunkingConfig = Field(default_factory=ChunkingConfig)
     retrieval: RetrievalConfig = Field(default_factory=RetrievalConfig)
+
+    @field_serializer("instruction_file")
+    def _posix(self, value: Path | None) -> str | None:
+        return value.as_posix() if value is not None else None  # the saved config.yaml reads the same on every OS
 
 
 class DatasetConfig(BaseModel):
@@ -158,16 +176,20 @@ class EvalConfig(BaseModel):
         output_dir: Folder that holds the ``<timestamp>_<name>`` run folders.
         fail_under: Minimum mean per metric; a missed threshold makes the run exit non-zero.
         predictions: Also write ``predictions.jsonl`` (LakeQuest submission format).
+        prediction_answer: Text written as ``answer`` in ``predictions.jsonl``: ``full`` (the
+            final answer) or ``first_line`` (its first non-empty line, the text that
+            ``exact_match`` scores).
     """
 
     model_config = _FROZEN
 
     mode: Literal["agent", "retrieval"] = "agent"
-    metrics: list[MetricName] = Field(default_factory=lambda: list(ALL_METRICS))
+    metrics: list[MetricName] = Field(default_factory=lambda: list(DEFAULT_METRICS))
     repeats: int = Field(1, ge=1, le=5)
     output_dir: Path = Path("runs")
     fail_under: dict[MetricName, float] = Field(default_factory=dict)
     predictions: bool = False
+    prediction_answer: Literal["full", "first_line"] = "full"
 
     @field_serializer("output_dir")
     def _posix(self, value: Path) -> str:

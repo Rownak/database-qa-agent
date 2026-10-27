@@ -35,7 +35,7 @@ def result(answer="", calls=()):
 def test_metrics_registry():
     assert set(METRICS) == {
         "tool_sequence_match", "section_recall", "answer_contains", "citation_precision", "mrr",
-        "answer_f1", "object_f1", "coverage",
+        "answer_f1", "object_f1", "coverage", "exact_match", "squad_f1",
     }
 
 
@@ -155,3 +155,87 @@ def test_answer_f1_matches_the_official_scorer():
     for ref, pred in pairs:
         c = case(reference_answers=[ref])
         assert METRICS["answer_f1"](c, result(pred)) == pytest.approx(official._token_f1(ref, pred))
+
+
+# ---- short-answer metrics (HybridQA-style exact match and SQuAD F1) ----
+
+import collections  # noqa: E402
+import re  # noqa: E402
+import string  # noqa: E402
+
+from evals.metrics import short_answer  # noqa: E402
+
+
+def refs(*answers):
+    return case(reference_answers=list(answers))
+
+
+def test_exact_match_ignores_case_punctuation_and_articles():
+    f = METRICS["exact_match"]
+    assert f(refs("beatles"), result("The Beatles.")) == 1.0
+    assert f(refs("The Beatles"), result("a BEATLES!")) == 1.0
+    assert f(refs("Paris"), result("Paris, France")) == 0.0
+    assert f(refs("Paris", "Lyon"), result("lyon")) == 1.0  # best over the references
+
+
+def test_squad_f1_is_partial_credit_on_tokens():
+    f = METRICS["squad_f1"]
+    assert f(refs("New York City"), result("New York")) == pytest.approx(2 * 1.0 * (2 / 3) / (1.0 + 2 / 3))
+    assert f(refs("Paris"), result("Berlin")) == 0.0
+    assert f(refs("Paris", "New York"), result("York")) == pytest.approx(2 * 1.0 * 0.5 / 1.5)
+
+
+def test_empty_texts_follow_the_squad_scorer():
+    assert METRICS["squad_f1"](refs("the"), result("a")) == 1.0  # both normalise to nothing
+    assert METRICS["squad_f1"](refs("Paris"), result("")) == 0.0
+    assert METRICS["exact_match"](refs("Paris"), result("")) == 0.0
+
+
+def test_short_answer_scores_only_the_first_line():
+    r = result("\nParis\nThe capital, see [France.md].\nSources: x")
+    assert short_answer(r) == "Paris"
+    assert METRICS["exact_match"](refs("Paris"), r) == 1.0
+    assert METRICS["squad_f1"](refs("Paris"), r) == 1.0
+    assert short_answer(result("")) == ""
+
+
+def test_short_answer_metrics_are_none_without_references():
+    assert METRICS["exact_match"](case(), result("x")) is None
+    assert METRICS["squad_f1"](case(), result("x")) is None
+
+
+# copied from benchmark/HybridQA/evaluate_script.py (MIT) to pin our values to the official formulas
+def _official_normalize(s):
+    s = "".join(ch for ch in s.lower() if ch not in set(string.punctuation))
+    return " ".join(re.sub(re.compile(r"\b(a|an|the)\b", re.UNICODE), " ", s).split())
+
+
+def _official_exact(a_gold, a_pred):
+    return int(_official_normalize(a_gold) == _official_normalize(a_pred))
+
+
+def _official_f1(a_gold, a_pred):
+    gold, pred = _official_normalize(a_gold).split(), _official_normalize(a_pred).split()
+    num_same = sum((collections.Counter(gold) & collections.Counter(pred)).values())
+    if len(gold) == 0 or len(pred) == 0:
+        return int(gold == pred)
+    if num_same == 0:
+        return 0
+    precision, recall = 1.0 * num_same / len(pred), 1.0 * num_same / len(gold)
+    return (2 * precision * recall) / (precision + recall)
+
+
+@pytest.mark.parametrize(
+    "gold, pred",
+    [
+        ("The United States", "United States of America"),
+        ("1999", "In 1999."),
+        ("Mount Everest", "mount everest"),
+        ("a an the", "the"),
+        ("Saint-Denis, France", "Saint Denis"),
+    ],
+)
+def test_values_equal_the_official_hybridqa_formulas(gold, pred):
+    c, r = refs(gold), result(pred)
+    assert METRICS["exact_match"](c, r) == _official_exact(gold, pred)
+    assert METRICS["squad_f1"](c, r) == pytest.approx(_official_f1(gold, pred))

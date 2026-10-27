@@ -140,6 +140,8 @@ _PROFILES = {
     ),
 }
 
+_ROOT = Path(__file__).resolve().parent.parent  # db-doc-qa/: a relative instruction_file is taken from here
+
 _STATE_KEYS = ("db_path", "column_map", "schema_summary")
 
 logger = get_logger(__name__)
@@ -404,13 +406,20 @@ def build_agent(cfg: AgentConfig) -> Agent:
 
     Args:
         cfg: Agent settings. ``cfg.profile`` picks the instruction and description
-            (``INSTRUCTION`` or ``LAKE_INSTRUCTION``). ``cfg.model.agent`` is the model; the temperature is set only
+            (``INSTRUCTION`` or ``LAKE_INSTRUCTION``); ``cfg.instruction_file``, when set, replaces the
+            instruction text and keeps that description. ``cfg.model.agent`` is the model; the temperature is set only
             when it is not ``None``, so the model default stays the default.
 
     Returns:
         An ADK ``Agent`` whose before-agent callback is ``make_ensure_data(cfg)``.
     """
     instruction, description = _PROFILES[cfg.profile]
+    if cfg.instruction_file is not None:
+        path = cfg.instruction_file if cfg.instruction_file.is_absolute() else _ROOT / cfg.instruction_file
+        try:
+            instruction = path.read_text(encoding="utf-8")
+        except OSError as exc:
+            raise FileNotFoundError(f"agent.instruction_file cannot be read: {path} ({exc})") from exc
     extra = {}
     if cfg.model.temperature is not None:
         extra["generate_content_config"] = types.GenerateContentConfig(temperature=cfg.model.temperature)

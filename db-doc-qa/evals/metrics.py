@@ -8,6 +8,7 @@ the YAML config to its function, so a new metric is one more entry.
 from __future__ import annotations
 
 import re
+import string
 from collections import Counter
 from typing import Callable
 
@@ -122,6 +123,19 @@ def final_answer(result: TurnResult) -> str:
     return strip_sources(result.answer)
 
 
+def first_line(answer: str | None) -> str:
+    """The first non-empty line of ``answer`` (stripped); ``""`` when there is none."""
+    for line in (answer or "").splitlines():
+        if line.strip():
+            return line.strip()
+    return ""
+
+
+def short_answer(result: TurnResult) -> str:
+    """The first non-empty line of the final answer: the bare value that the short-answer metrics score."""
+    return first_line(final_answer(result))
+
+
 def predicted_object_ids(result: TurnResult) -> list[str]:
     """Object ids the answer relied on, lower-cased and sorted.
 
@@ -169,6 +183,46 @@ def answer_f1(case: EvalCase, result: TurnResult) -> float | None:
     return max(_token_f1(r, answer) for r in refs)
 
 
+_ARTICLES_RE = re.compile(r"\b(a|an|the)\b")
+_PUNCT = set(string.punctuation)
+
+
+def normalize_answer(text: str) -> str:
+    """SQuAD normalisation: lower case, no punctuation, no articles ``a/an/the``, collapsed spaces."""
+    text = "".join(ch for ch in str(text or "").lower() if ch not in _PUNCT)
+    return " ".join(_ARTICLES_RE.sub(" ", text).split())
+
+
+def _squad_f1(reference: str, prediction: str) -> float:
+    """Token F1 of the SQuAD scorer; if either side is empty, 1.0 when both are, else 0.0."""
+    ref, pred = normalize_answer(reference).split(), normalize_answer(prediction).split()
+    if not ref or not pred:
+        return float(ref == pred)
+    overlap = sum((Counter(ref) & Counter(pred)).values())
+    if overlap == 0:
+        return 0.0
+    precision, recall = overlap / len(pred), overlap / len(ref)
+    return 2 * precision * recall / (precision + recall)
+
+
+def exact_match(case: EvalCase, result: TurnResult) -> float | None:
+    """1.0 if the first line of the answer equals a reference answer after SQuAD normalisation."""
+    refs = case.expected.reference_answers
+    if not refs:
+        return None
+    pred = normalize_answer(short_answer(result))
+    return float(any(normalize_answer(r) == pred for r in refs))
+
+
+def squad_f1(case: EvalCase, result: TurnResult) -> float | None:
+    """Best SQuAD token F1 of the first line of the answer against ``expected.reference_answers``."""
+    refs = case.expected.reference_answers
+    if not refs:
+        return None
+    pred = short_answer(result)
+    return max(_squad_f1(r, pred) for r in refs)
+
+
 def object_f1(case: EvalCase, result: TurnResult) -> float | None:
     """Set F1 between :func:`predicted_object_ids` and ``expected.object_ids``."""
     gold = {g.strip().lower() for g in case.expected.object_ids if g.strip()}
@@ -196,8 +250,10 @@ METRICS: dict[str, Callable[[EvalCase, TurnResult], float | None]] = {
     "answer_f1": answer_f1,
     "object_f1": object_f1,
     "coverage": coverage,
+    "exact_match": exact_match,
+    "squad_f1": squad_f1,
 }
 
 # Which metrics make sense in each ``eval.mode``: retrieval mode has no answer, tools or citations.
-AGENT_METRICS = ("tool_sequence_match", "section_recall", "answer_contains", "citation_precision", "answer_f1", "object_f1", "coverage")
+AGENT_METRICS = ("tool_sequence_match", "section_recall", "answer_contains", "citation_precision", "answer_f1", "object_f1", "coverage", "exact_match", "squad_f1")
 RETRIEVAL_METRICS = ("section_recall", "mrr")

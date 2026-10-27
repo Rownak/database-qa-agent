@@ -9,6 +9,7 @@ import numpy as np
 import pytest
 
 from data_agent import doc_ingest
+from data_agent.config import EmbeddingConfig
 from data_agent.doc_ingest import DocError, PreparedDoc, build, embed, prepare
 from data_agent.ingest import SAMPLE_DOCS_DIR
 from tests.conftest import DOC_SAMPLES
@@ -280,3 +281,63 @@ def test_fts5_is_available():
         conn.execute("CREATE VIRTUAL TABLE t USING fts5(content, tokenize = 'porter unicode61')")
         conn.execute("INSERT INTO t VALUES ('delayed shipments')")
         assert conn.execute("SELECT count(*) FROM t WHERE t MATCH 'delay'").fetchone() == (1,)
+
+
+# ---- Ollama embedding provider (the HTTP call is patched; no server needed) ----
+
+import io as _io  # noqa: E402
+import json as _json  # noqa: E402
+
+
+def _fake_ollama(monkeypatch, dim=4, fail=None):
+    """Patches urlopen; returns the list of request bodies sent."""
+    import urllib.request
+
+    sent = []
+
+    def urlopen(request, timeout=None):
+        if fail:
+            raise fail
+        body = _json.loads(request.data)
+        sent.append((request.full_url, body))
+        return _io.BytesIO(_json.dumps({"embeddings": [[3.0, 4.0] + [0.0] * (dim - 2) for _ in body["input"]]}).encode())
+
+    monkeypatch.setattr(urllib.request, "urlopen", urlopen)
+    return sent
+
+
+def _ollama(**kw):
+    return EmbeddingConfig(provider="ollama", model="nomic-embed-text:latest", dim=kw.pop("dim", 4), **kw)
+
+
+def test_ollama_provider_batches_prefixes_and_normalises(monkeypatch):
+    sent = _fake_ollama(monkeypatch)
+    out = embed(["a"] * 5, "RETRIEVAL_DOCUMENT", _ollama(batch=2))
+    assert [len(b["input"]) for _, b in sent] == [2, 2, 1]
+    assert sent[0][0] == "http://localhost:11434/api/embed" and sent[0][1]["model"] == "nomic-embed-text:latest"
+    assert sent[0][1]["input"][0] == "search_document: a"
+    assert out.shape == (5, 4) and np.allclose(np.linalg.norm(out, axis=1), 1.0) and np.isclose(out[0, 0], 0.6)
+    embed(["q"], "RETRIEVAL_QUERY", _ollama())
+    assert sent[-1][1]["input"] == ["search_query: q"]
+
+
+def test_ollama_other_models_get_no_prefix(monkeypatch):
+    sent = _fake_ollama(monkeypatch)
+    embed(["a"], "RETRIEVAL_DOCUMENT", EmbeddingConfig(provider="ollama", model="bge-m3", dim=4))
+    assert sent[0][1]["input"] == ["a"]
+
+
+def test_ollama_returns_none_on_a_wrong_dimension_or_a_connection_error(monkeypatch):
+    _fake_ollama(monkeypatch, dim=6)
+    assert embed(["a"], "RETRIEVAL_DOCUMENT", _ollama(dim=4)) is None  # a wrong-size index must not be written
+    _fake_ollama(monkeypatch, fail=ConnectionRefusedError("server stopped"))
+    assert embed(["a"], "RETRIEVAL_DOCUMENT", _ollama()) is None
+
+
+def test_gemini_is_still_the_default_provider(monkeypatch):
+    from google import genai
+
+    _FakeClient.calls = []
+    monkeypatch.setattr(genai, "Client", _FakeClient)
+    assert embed(["t"], "RETRIEVAL_DOCUMENT", EmbeddingConfig()).shape == (1, 768)
+    assert _FakeClient.calls == [1]
