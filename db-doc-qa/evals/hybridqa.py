@@ -1,4 +1,4 @@
-"""HybridQA adapter: turns the benchmark into a self-contained bundle (HybridQA design sections 2-3).
+"""HybridQA adapter: turns the benchmark into a self-contained bundle and scores a run (HybridQA design sections 2-3 and 5.2).
 
 ``uv run python -m evals.hybridqa prepare ...`` (from ``db-doc-qa/``) reads the labelled dev
 questions of ``benchmark/HybridQA/released_data``, draws a reproducible stratified sample
@@ -10,6 +10,10 @@ sampled question and writes::
     reference/dev_reference.json   the official reference format, restricted to the sample
     prepare.json            sources and hashes, seed, counts, skipped qids, chunking / embedding
 
+``score <run_dir> --reference <bundle>/reference/dev_reference.json`` turns the run's ``predictions.jsonl``
+into the official format and applies the logic of ``evaluate_script.py`` (MIT, copied below), so our own
+``exact_match`` / ``squad_f1`` can be checked against it.
+
 All HybridQA parsing and mapping lives here; the runner, the metrics and the agent stay
 dataset-agnostic and only see the bundle. The module reuses ``ingest.load_files`` and
 ``doc_ingest.build`` and changes none of the existing code.
@@ -19,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import collections
 import csv
 import hashlib
 import io
@@ -26,6 +31,7 @@ import json
 import random
 import re
 import sqlite3
+import string
 import subprocess
 import sys
 import time
@@ -496,6 +502,96 @@ def prepare(
     return info
 
 
+# ---- score: the logic of benchmark/HybridQA/evaluate_script.py (MIT), copied so the check stays independent
+# of evals.metrics, whose exact_match / squad_f1 it is meant to verify ----
+
+
+def _official_normalize(s: str) -> str:
+    """Lower case, no punctuation, no articles ``a/an/the``, collapsed spaces (the official ``normalize_answer``)."""
+    s = "".join(ch for ch in s.lower() if ch not in set(string.punctuation))
+    return " ".join(re.sub(re.compile(r"\b(a|an|the)\b", re.UNICODE), " ", s).split())
+
+
+def _official_exact(gold: str, pred: str) -> int:
+    return int(_official_normalize(gold) == _official_normalize(pred))
+
+
+def _official_f1(gold: str, pred: str) -> float:
+    gold_toks = _official_normalize(gold).split() if gold else []
+    pred_toks = _official_normalize(pred).split() if pred else []
+    num_same = sum((collections.Counter(gold_toks) & collections.Counter(pred_toks)).values())
+    if len(gold_toks) == 0 or len(pred_toks) == 0:
+        return int(gold_toks == pred_toks)  # if either is empty, F1 is 1 when both are, else 0
+    if num_same == 0:
+        return 0
+    precision, recall = num_same / len(pred_toks), num_same / len(gold_toks)
+    return (2 * precision * recall) / (precision + recall)
+
+
+def official_scores(predictions: list[dict], reference: dict) -> dict[str, float | None]:
+    """Scores ``[{question_id, pred}]`` against a reference with the official formulas.
+
+    Args:
+        predictions: One ``{"question_id", "pred"}`` per question.
+        reference: ``{"reference": {qid: answer}, "table": [qid], "passage": [qid]}``.
+
+    Returns:
+        ``table/passage/total exact`` and ``... f1`` on a 0-100 scale (``None`` for a type without questions).
+
+    Raises:
+        ValueError: If a question of the reference has no prediction.
+    """
+    preds = {p["question_id"]: p["pred"] for p in predictions}
+    missing = [q for q in reference["reference"] if q not in preds]
+    if missing:
+        shown = ", ".join(missing[:5]) + (" ..." if len(missing) > 5 else "")
+        raise ValueError(f"{len(missing)} reference question(s) have no prediction: {shown}")
+    exact = {q: _official_exact(a, preds[q]) for q, a in reference["reference"].items()}
+    f1 = {q: _official_f1(a, preds[q]) for q, a in reference["reference"].items()}
+
+    def mean(scores: dict, qids: list[str]) -> float | None:
+        return 100.0 * sum(scores[q] for q in qids) / len(qids) if qids else None
+
+    groups = {"table": reference["table"], "passage": reference["passage"], "total": list(reference["reference"])}
+    out: dict[str, float | None] = {}
+    for name, qids in groups.items():
+        out[f"{name} exact"], out[f"{name} f1"] = mean(exact, qids), mean(f1, qids)
+    return out
+
+
+def score(run_dir: Path, reference_path: Path) -> dict:
+    """Scores a run folder with the official logic and writes ``official_scores.json`` into it.
+
+    Args:
+        run_dir: A run folder holding ``predictions.jsonl`` (its ``answer`` is the first line when the run used
+            ``eval.prediction_answer: first_line``).
+        reference_path: ``reference/dev_reference.json`` of the bundle.
+
+    Returns:
+        The scores of :func:`official_scores` plus ``n`` (questions scored).
+
+    Raises:
+        PrepareError: If a file is missing, or a reference question has no prediction.
+    """
+    pred_path = run_dir / "predictions.jsonl"
+    for path in (pred_path, reference_path):
+        if not path.is_file():
+            raise PrepareError(f"missing {path}" + ("; run with eval.predictions=true" if path == pred_path else ""))
+    predictions = [
+        {"question_id": row["qa_id"], "pred": row["answer"]}
+        for row in map(json.loads, pred_path.read_text(encoding="utf-8").splitlines())
+        if row.get("qa_id")
+    ]
+    reference = json.loads(reference_path.read_text(encoding="utf-8"))
+    try:
+        scores = official_scores(predictions, reference)
+    except ValueError as exc:
+        raise PrepareError(f"{pred_path}: {exc}") from exc
+    result = {**scores, "n": len(reference["reference"])}
+    (run_dir / "official_scores.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
+    return result
+
+
 def _per_type(value: str) -> int | None:
     return None if value == "all" else int(value)
 
@@ -513,7 +609,18 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--seed", type=int, default=DEFAULT_SEED)
     p.add_argument("--cache", type=Path, default=Path("../benchmark/hybridqa_prepared/raw"))
     p.add_argument("--one-per-table", action=argparse.BooleanOptionalAction, default=True)
+    s = sub.add_parser("score", help="score a run folder with the official HybridQA logic")
+    s.add_argument("run_dir", type=Path)
+    s.add_argument("--reference", type=Path, required=True, help="<bundle>/reference/dev_reference.json")
     args = parser.parse_args(sys.argv[1:] if argv is None else argv)
+    if args.command == "score":
+        try:
+            result = score(args.run_dir, args.reference)
+        except PrepareError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
+        print(json.dumps(result, indent=2))
+        return 0
     try:
         info = prepare(
             args.hybridqa, args.config, args.out, split=args.split, per_type=args.per_type,

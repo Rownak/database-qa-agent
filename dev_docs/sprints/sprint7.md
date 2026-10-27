@@ -178,33 +178,33 @@ Every phase ends with the following (CLAUDE.md):
 
 **Goal:** one YAML runs HybridQA with the generic runner, and the official scorer can check its output.
 
-- [ ] **Instruction** `configs/prompts/hybridqa.md` (design §4.1), with these parts:
+- [x] **Instruction** `configs/prompts/hybridqa.md` (design §4.1), with these parts:
   - **Sources:** one Wikipedia table and the articles about the entities linked from its cells.
   - **Routing:** SQL first to find the row, then `search_documents` with `source="<Entity>.md"`, repeated for chained hops.
   - **Scope:** answer only from these sources.
   - **Answer format:** the first line holds only the answer; at most 2 justification lines citing `[Entity.md]`; no `Sources:` line.
   - **Rules:** keep the read-only and prompt-injection rules of the built-in instructions.
-- [ ] **Run config** `configs/eval/hybridqa_dev50_ollama.yaml` (design §6; created in Phase 7.2a, extended here). Add the same `instruction_file` and `prediction_answer` keys to `hybridqa_dev50.yaml` (Gemini embeddings) so both stay equivalent:
+- [x] **Run config** `configs/eval/hybridqa_dev50_ollama.yaml` (design §6; created in Phase 7.2a, extended here). Add the same `instruction_file` and `prediction_answer` keys to `hybridqa_dev50.yaml` (Gemini embeddings) so both stay equivalent:
   - `agent.instruction_file: configs/prompts/hybridqa.md`
   - `intent_enabled: false`, `temperature: 0.0`
   - `metrics: [exact_match, squad_f1, answer_contains, coverage, object_f1]`
   - `predictions: true`, `prediction_answer: first_line`
-- [ ] **`score` command** (`evals/hybridqa.py`):
+- [x] **`score` command** (`evals/hybridqa.py`):
 
   ```
   uv run python -m evals.hybridqa score <run_dir> --reference <bundle>/reference/dev_reference.json
   ```
 
   It converts `predictions.jsonl` to `[{question_id, pred}]` and scores it with the logic of `evaluate_script.py`. That scorer is MIT-licensed: copy its normalisation into the adapter, or call the script by path. A run whose predictions miss a reference qid fails with a clear message instead of `KeyError`. The command writes `official_scores.json` into the run folder and prints it.
-- [ ] **Smoke run:**
+- [x] **Smoke run:**
   - Run `uv run python -m evals configs/eval/hybridqa_dev50_ollama.yaml dataset.limit=5`.
   - Check that the first line of each answer is a bare value. If not, adjust the instruction once and re-run.
-- [ ] **Tests:**
+- [x] **Tests:**
   - `hybridqa_dev50_ollama.yaml` loads.
   - `instruction_file` exists and contains the three placeholders.
   - `score` on a hand-made run folder gives the expected table, passage and total EM/F1, and a missing qid fails cleanly.
   - All earlier tests pass.
-- [ ] **Dev script** `phase_7_3.py`: run 2 live cases (one of each type). Print each answer, its first line, the gold answer, the tool calls and `exact_match`/`squad_f1`.
+- [x] **Dev script** `phase_7_3.py`: run 2 live cases (one of each type). Print each answer, its first line, the gold answer, the tool calls and `exact_match`/`squad_f1`.
 
 ## Phase 7.4 — Run the 50 Questions and Verify
 
