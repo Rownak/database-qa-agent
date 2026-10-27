@@ -10,7 +10,7 @@ import json
 from pathlib import Path
 
 from data_agent.config import RunConfig
-from evals.metrics import strip_sources
+from evals.metrics import first_line, strip_sources
 
 CALL_RESPONSE_CHARS = 300  # tool responses are cut in results.jsonl to keep the file small
 
@@ -36,7 +36,7 @@ def short_calls(calls: list[dict]) -> list[dict]:
     return out
 
 
-def write_predictions(run_dir: Path, rows: list[dict]) -> None:
+def write_predictions(run_dir: Path, rows: list[dict], answer: str = "full") -> None:
     """Writes ``predictions.jsonl`` in the LakeQuest submission format.
 
     One line per case (the first repeat only, since the scorer keeps one prediction per
@@ -46,11 +46,14 @@ def write_predictions(run_dir: Path, rows: list[dict]) -> None:
     Args:
         run_dir: The run folder.
         rows: The ``results.jsonl`` rows (``id``, ``repeat``, ``answer``, ``object_ids``).
+        answer: ``full`` (the answer without its ``Sources:`` line) or ``first_line`` (the first
+            non-empty line, as ``exact_match`` scores it).
     """
+    text = (lambda a: first_line(strip_sources(a))) if answer == "first_line" else strip_sources
     with (run_dir / "predictions.jsonl").open("w", encoding="utf-8") as f:
         for row in rows:
             if row.get("repeat", 0) == 0:
-                line = {"qa_id": row["id"], "answer": strip_sources(row["answer"]), "object_ids": row.get("object_ids", [])}
+                line = {"qa_id": row["id"], "answer": text(row["answer"]), "object_ids": row.get("object_ids", [])}
                 f.write(json.dumps(line, ensure_ascii=False) + "\n")
 
 
@@ -71,5 +74,5 @@ def write_run(run_dir: Path, cfg: RunConfig, rows: list[dict], metrics: dict) ->
         for row in rows:
             f.write(json.dumps(row, ensure_ascii=False, default=str) + "\n")
     if cfg.eval.predictions:
-        write_predictions(run_dir, rows)
+        write_predictions(run_dir, rows, cfg.eval.prediction_answer)
     (run_dir / "metrics.json").write_text(json.dumps(metrics, indent=2, ensure_ascii=False), encoding="utf-8")

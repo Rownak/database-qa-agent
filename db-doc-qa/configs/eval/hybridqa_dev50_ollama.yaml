@@ -1,0 +1,20 @@
+name: hybridqa_dev50_ollama
+agent:
+  instruction_file: configs/prompts/hybridqa.md   # HybridQA answer format and routing
+  intent_enabled: false         # the classifier prompt is about shipments
+  model:
+    agent: gemini-3.5-flash-lite
+    temperature: 0.0
+  embedding:
+    provider: ollama            # local server; avoids the Gemini embedding rate limit
+    model: nomic-embed-text:latest
+    dim: 768
+  retrieval:
+    mode: hybrid
+dataset:
+  path: ../benchmark/hybridqa_prepared/dev_s50_ollama/dataset.yaml
+eval:
+  mode: agent
+  metrics: [exact_match, squad_f1, answer_contains, coverage, object_f1]
+  predictions: true
+  prediction_answer: first_line   # predictions.jsonl holds the first line, as exact_match scores it

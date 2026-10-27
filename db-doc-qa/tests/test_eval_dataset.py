@@ -1,5 +1,7 @@
 """Tests for evals.dataset: the shipped dataset and its validation."""
 
+from pathlib import Path
+
 import pytest
 import yaml
 from pydantic import ValidationError
@@ -52,3 +54,14 @@ def test_docs_folder_expands_to_sorted_files(tmp_path):
     ds = load_dataset(_write(tmp_path, {"name": "n", "version": 1, "docs": str(tmp_path / "docs"), "cases": []}))
     table, docs = dataset_files(ds)
     assert table is None and [p.name for p in docs] == ["a.txt", "b.txt"]
+
+
+def test_case_level_state_file_loads_and_defaults_to_none(tmp_path):
+    data = {
+        "name": "n", "version": 1,
+        "cases": [{"id": "a", "question": "q", "state_file": "tables/a/state.json"}, {"id": "b", "question": "q"}],
+    }
+    ds = load_dataset(_write(tmp_path, data))
+    assert ds.cases[0].state_file == Path("tables/a/state.json") and ds.cases[1].state_file is None
+    assert ds.state_file is None
+    assert all(c.state_file is None for c in load_dataset(SHIPPED).cases)  # existing datasets are unchanged

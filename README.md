@@ -61,9 +61,7 @@ Each session starts with **60 sample shipments and three shipping-policy documen
 
 The UI also demonstrates missing-record handling and refusal of write requests such as `Delete all rows`.
 
-## Implemented safeguards and evaluation
-
-**Safeguards**
+## Implemented safeguards
 
 - **Upload validation:** CSV/XLSX data-file uploads and PDF/TXT/MD documents have format and size constraints; invalid files are rejected.
 - **Restricted SQL:** Single read-only `SELECT`/`WITH` statements; 100-row output cap, 200-character cell cap, and approximately 5-second query limit.
@@ -73,7 +71,24 @@ The UI also demonstrates missing-record handling and refusal of write requests s
 
 <!-- **Measured benchmark — LakeQuest bank sample:** An internal 40-case run (20 hybrid, 10 database, 10 document) reported **0.97 tool-sequence match**, **0.79 section recall**, **2.8 s p50**, and **6.3 s p95** latency. Overall token-level `answer_f1` was **0.34**; hybrid cases were the principal weakness, including incorrect policy selection. These are internal sample results, **not a production SLA or public benchmark leaderboard score**. See the evaluation commands below. -->
 
-**Evaluation**
+## Evaluation
+
+** [HybridQA Dataset](https://github.com/wenhuchen/HybridQA) **
+
+Evaluated on a 50-question sample (25 table, 25 passage) of the public HybridQA **dev set**, not the full dev set or the hidden test set, using Gemini 3.5 Flash-Lite, with local `nomic-embed-text` embeddings (Ollama). Each question gets its own Wikipedia table and the articles linked from its cells (the standard "gold table" setting).
+(0 errors, p50 4.6 s, p95 24.5 s). **HybridQA metrics are percentages (0–100)**, as in the official scorer:
+
+| Type | EM | F1 | `answer_contains` |
+|---|---|---|---|
+| table (25) | 68.0 | 78.2 | 88 |
+| passage (25) | 56.0 | 69.3 | 76 |
+| **overall** | **62.0** | **73.8** | **82** |
+
+EM and F1 score the first line of the answer and match the official HybridQA scorer exactly. `answer_contains` is the lenient check: the gold answer appears anywhere in the answer. Of the 19 questions with EM 0, 8 were right but worded differently (an added unit or word, such as `104 kg` for `104`), 5 had the right article but the wrong span, 4 used the wrong table row, and 2 used the wrong or a missing article.
+
+**Key finding:** Answer wording, not retrieval, is the largest single cause of lost EM. Results are one run on a small internal sample (one question is 2 points), not a leaderboard score. The data is internal-use only.
+
+** [LakeQuest Dataset](https://github.com/michael0402/LakeQuest/) **
 
 Evaluated on 40 LakeQuest bank cases (20 hybrid, 10 database, 10 document) using Gemini 3.5 Flash-Lite.
 (0 errors, p50 2.8 s, p95 6.3 s;):
@@ -123,6 +138,8 @@ uv run python -m evals configs/eval/bm25_only.yaml
 
 Runs save resolved configuration, per-case results, and metrics under `runs/`. The extended LakeQuest workflow requires separately downloaded benchmark data; it is not part of this quick start.
 
+**Embedding rate limits:** indexing many documents for a benchmark can hit the Gemini embedding rate limit (`ClientError`, retrieval falls back to BM25 only). For evaluation, the run config can choose a local Ollama embedding model instead (`agent.embedding.provider: ollama`, `model: nomic-embed-text:latest`, see `configs/eval/hybridqa_dev50_ollama.yaml`; needs `ollama pull nomic-embed-text`). The default stays Gemini, and a bundle must be rebuilt when the provider changes.
+
 ## Deployment status and next steps
 
 **Demonstrated GCP deployment:** Two Cloud Run services: a private ADK API (`data-qa-api`) and a public Streamlit UI (`data-qa-ui`) that invokes it using a service account. The API key is stored as a secret. Deployment instructions are in [GCP setup](db-doc-qa/dev_docs/deploy/phase_2_1_gcp_setup.md) and [deployment guide](db-doc-qa/dev_docs/deploy/deploy.md). These links assume this README is at the repository root.
@@ -135,4 +152,13 @@ Runs save resolved configuration, per-case results, and metrics under `runs/`. T
 2. Add authenticated UI access, persistent session/state storage, production monitoring, and deployment automation.
 3. Improve hybrid policy selection and expand evaluation using representative real-world tasks, security tests, and latency budgets.
 
-**Demo constraints:** Up to three data files per session, each its own table (CSV/XLSX up to 500 KB; first Excel sheet only). A table is named after its file (`Sales 2024.csv` becomes `sales_2024`; a leading digit adds `t_`; a repeated name adds `_2`, `_3`), and uploading a file with a loaded file's name replaces it. The first upload replaces the sample table (`data`), and removing every file restores it. Up to three documents (PDF/TXT/MD, up to 1 MB and 20 pages each). Scanned or password-protected PDFs are unsupported. Replacing data resets the conversation. LLM outputs can still be inaccurate; SQL and citations are available for inspection.
+**Demo constraints:**
+
+- **Data files:** up to three per session, each its own table (CSV/XLSX up to 500 KB; first Excel sheet only).
+- **Table names:** taken from the file name (`Sales 2024.csv` becomes `sales_2024`; a leading digit adds `t_`; a repeated name adds `_2`, `_3`).
+- **Replacing files:** uploading a file with a loaded file's name replaces it.
+- **Sample data:** the first upload replaces the sample table (`data`); removing every file restores it.
+- **Documents:** up to three (PDF/TXT/MD, up to 1 MB and 20 pages each).
+- **Unsupported:** scanned or password-protected PDFs.
+- **Conversation:** replacing data resets it.
+- **Accuracy:** LLM outputs can still be inaccurate; SQL and citations are available for inspection.

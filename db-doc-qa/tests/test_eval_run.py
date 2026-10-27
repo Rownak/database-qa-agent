@@ -235,3 +235,111 @@ def test_an_embedding_mismatch_raises(bundle, tmp_path):
 def test_a_prebuilt_dataset_cannot_run_in_retrieval_mode(bundle, tmp_path):
     with pytest.raises(ValueError, match="agent mode"):
         run_eval(bundle_cfg(bundle, "eval.mode=retrieval"), tmp_path / "run", session_factory=FakeBundleSession)
+
+
+# ---- per-case bundles (dataset-agnostic: one prebuilt state per case) ----
+
+
+def make_bundle(root: Path, name: str) -> Path:
+    """A tiny prebuilt bundle (empty db files; the fake session never opens them); returns its state.json."""
+    folder = root / "tables" / name
+    folder.mkdir(parents=True)
+    (folder / "data.db").write_bytes(b"")
+    (folder / "docs.db").write_bytes(b"")
+    state = {"db_path": "data.db", "docs_db_path": "docs.db", "column_map": {}, "schema_summary": name, "docs_summary": name}
+    (folder / "state.json").write_text(json.dumps(state), encoding="utf-8")
+    return folder / "state.json"
+
+
+def per_case_dataset(root: Path, chunk_words: int = 60, dataset_state: str | None = None) -> Path:
+    """Two cases with their own bundles and a root-level prepare.json; returns the run config path."""
+    make_bundle(root, "a")
+    make_bundle(root, "b")
+    (root / "prepare.json").write_text(
+        json.dumps({"chunking": {"chunk_words": chunk_words, "fallback_overlap": 0.15},
+                    "embedding": {"model": "gemini-embedding-001", "dim": 768, "batch": 100}}),
+        encoding="utf-8",
+    )
+    cases = [
+        {"id": "qa", "question": "qa?", "tags": ["x"], "state_file": "tables/a/state.json"},
+        {"id": "qb", "question": "qb?", "tags": ["y"], "state_file": "tables/b/state.json"},
+    ]
+    ds = {"name": "pc", "version": 1, "cases": cases}
+    if dataset_state:
+        ds["state_file"] = dataset_state
+    (root / "dataset.yaml").write_text(yaml.safe_dump(ds), encoding="utf-8")
+    cfg = {
+        "name": "pc",
+        "agent": {"chunking": {"chunk_words": 60}},
+        "dataset": {"path": str(root / "dataset.yaml")},
+        "eval": {"metrics": ["coverage"]},
+    }
+    (root / "run.yaml").write_text(yaml.safe_dump(cfg), encoding="utf-8")
+    return root / "run.yaml"
+
+
+def test_each_case_receives_its_own_bundle_and_the_bundles_survive(tmp_path):
+    cfg = load_config(per_case_dataset(tmp_path / "ds"))
+    metrics = run_eval(cfg, tmp_path / "run", session_factory=FakeBundleSession)
+    assert [s["schema_summary"] for s in FakeBundleSession.created] == ["a", "b"]
+    assert Path(FakeBundleSession.created[1]["db_path"]) == (tmp_path / "ds" / "tables" / "b" / "data.db").resolve()
+    assert FakeBundleSession.closed == [False, False]
+    assert (tmp_path / "ds" / "tables" / "a" / "data.db").is_file() and (tmp_path / "ds" / "tables" / "b" / "docs.db").is_file()
+    assert metrics["data"]["chunking"]["chunk_words"] == 60  # prepare.json found next to dataset.yaml
+    assert set(metrics["by_tag"]) == {"x", "y"}
+
+
+def test_a_dataset_level_state_file_still_works_and_the_case_wins(tmp_path):
+    root = tmp_path / "ds"
+    make_bundle(root, "d")
+    cfg = load_config(per_case_dataset(root, dataset_state="tables/d/state.json"))
+    run_eval(cfg, tmp_path / "run", session_factory=FakeBundleSession)
+    assert [s["schema_summary"] for s in FakeBundleSession.created] == ["a", "b"]  # the case wins
+
+    (root / "dataset.yaml").write_text(
+        yaml.safe_dump({"name": "pc", "version": 1, "state_file": "tables/d/state.json",
+                        "cases": [{"id": "q", "question": "q?"}]}),
+        encoding="utf-8",
+    )
+    FakeBundleSession.created, FakeBundleSession.closed = [], []
+    run_eval(cfg, tmp_path / "run2", session_factory=FakeBundleSession)
+    assert [s["schema_summary"] for s in FakeBundleSession.created] == ["d"] and FakeBundleSession.closed == [False]
+
+
+def test_a_shared_prepare_json_mismatch_raises_before_any_question(tmp_path):
+    cfg = load_config(per_case_dataset(tmp_path / "ds", chunk_words=80))
+    with pytest.raises(ValueError, match="chunking"):
+        run_eval(cfg, tmp_path / "run", session_factory=FakeBundleSession)
+    assert FakeBundleSession.created == []
+
+
+def test_per_case_bundles_cannot_run_in_retrieval_mode(tmp_path):
+    cfg = load_config(per_case_dataset(tmp_path / "ds"), ["eval.mode=retrieval"])
+    with pytest.raises(ValueError, match="agent mode"):
+        run_eval(cfg, tmp_path / "run", session_factory=FakeBundleSession)
+
+
+def test_prediction_answer_first_line_writes_the_first_line_and_default_the_full_answer(tmp_path):
+    path = per_case_dataset(tmp_path / "ds")
+
+    def read(run_dir):
+        return [json.loads(x)["answer"] for x in (run_dir / "predictions.jsonl").read_text(encoding="utf-8").splitlines()]
+
+    class Multi(FakeBundleSession):
+        def ask(self, question):
+            return TurnResult("\nParis\nThe capital [France.md].", [], None, 1.0)
+
+    run_eval(load_config(path, ["eval.predictions=true"]), tmp_path / "full", session_factory=Multi)
+    assert read(tmp_path / "full") == ["Paris\nThe capital [France.md].", "Paris\nThe capital [France.md]."]
+    run_eval(load_config(path, ["eval.predictions=true", "eval.prediction_answer=first_line"]), tmp_path / "fl", session_factory=Multi)
+    assert read(tmp_path / "fl") == ["Paris", "Paris"]
+
+
+def test_a_bundle_built_with_another_embedding_provider_is_rejected(tmp_path):
+    path = per_case_dataset(tmp_path / "ds")
+    with pytest.raises(ValueError, match="embedding"):
+        run_eval(load_config(path, ["agent.embedding.provider=ollama"]), tmp_path / "run", session_factory=FakeBundleSession)
+    assert FakeBundleSession.created == []
+    # the server URL does not change the index, and a bundle without the new keys reads as the defaults
+    run_eval(load_config(path, ["agent.embedding.base_url=http://other:1"]), tmp_path / "run2", session_factory=FakeBundleSession)
+    assert len(FakeBundleSession.created) == 2
