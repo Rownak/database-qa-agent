@@ -16,11 +16,11 @@ from data_agent.ingest import (
     read_table,
     table_name_for,
 )
-from tests.conftest import DB_SAMPLES
+from tests.conftest import DB_SAMPLES, sample_path
 
 
 def _path(name):
-    return DB_SAMPLES / name
+    return sample_path(name)
 
 
 def _file(name):

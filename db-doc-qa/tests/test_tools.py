@@ -66,9 +66,9 @@ def test_no_file_loaded_is_error_not_exception():
 def test_run_sql_joins_two_uploaded_tables(tmp_path):
     """Phase 6.2: the fixture pair customers.csv / orders.csv answers a cross-table question."""
     from data_agent.ingest import load_files
-    from tests.conftest import DB_SAMPLES
+    from tests.conftest import sample_path
 
-    r = load_files([(n, (DB_SAMPLES / n).read_bytes()) for n in ("customers.csv", "orders.csv")], tmp_path / "s")
+    r = load_files([(n, sample_path(n).read_bytes()) for n in ("customers.csv", "orders.csv")], tmp_path / "s")
     ctx = SimpleNamespace(state={"db_path": str(r.db_path)})
     out = tools.run_sql(
         'SELECT c."name", SUM(o."amount") FROM "orders" o JOIN "customers" c ON c."customer_id" = o."customer_id" '

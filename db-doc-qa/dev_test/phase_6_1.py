@@ -6,7 +6,7 @@ from data_agent.ingest import load_files
 from data_agent.runner import AgentSession, files_state
 
 S = Path('sample_data/database')
-files = [S / 'sales.csv', S / 'sales.xlsx', S / 'multi_sheet.xlsx']
+files = [S / 'multi_db' / 'sales.csv', S / 'sales.xlsx', S / 'multi_sheet.xlsx']
 
 r = load_files([(p.name, p.read_bytes()) for p in files], Path(tempfile.mkdtemp()) / 'session')
 print([(t.table, t.file_name, t.row_count) for t in r.tables])

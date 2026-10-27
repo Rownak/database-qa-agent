@@ -4,7 +4,7 @@
 The multi-file behaviour was checked in a real browser (Playwright + Chrome) against the Streamlit UI in **local mode** and in **API mode** (local `adk api_server` plus a second UI with `API_URL`). All 25 checks pass in both modes. One bug was found and fixed (the Documents list lagged one rerun behind a document upload). `uv run pytest`: **334 passed**. Nothing was deployed.
 
 ## What was checked
-The browser script is `db-doc-qa/dev_test/phase_6_2_browser.py` (not a project dependency; see its docstring). It calls the real Gemini model. New fixtures `sample_data/database/customers.csv` and `orders.csv` give a real join (expected answer: Grace Hopper, 499.99).
+The browser script is `db-doc-qa/dev_test/phase_6_2_browser.py` (not a project dependency; see its docstring). It calls the real Gemini model. New fixtures `sample_data/database/multi_db/customers.csv` and `orders.csv` (next to `sales.csv`) give a real join (expected answer: Grace Hopper, 499.99).
 
 | Area | Result |
 |---|---|
@@ -34,7 +34,7 @@ The browser script is `db-doc-qa/dev_test/phase_6_2_browser.py` (not a project d
 
 ## Files
 - Modified: `app.py`, `tests/test_app_docs.py`, `tests/test_tools.py`, `dev_docs/sprints/sprint6.md`
-- Created: `sample_data/database/customers.csv`, `sample_data/database/orders.csv`, `dev_test/phase_6_2.py`, `dev_test/phase_6_2_browser.py`, `dev_docs/execution_logs/sprint_6_2.md`
+- Created: `sample_data/database/multi_db/customers.csv`, `.../orders.csv`, `dev_test/phase_6_2.py`, `dev_test/phase_6_2_browser.py`, `dev_docs/execution_logs/sprint_6_2.md`
 
 ## Commands
 ```

@@ -6,7 +6,7 @@ A working demonstration of an enterprise assistant built with **Google Agent Dev
 
 Enterprise answers often depend on information split between operational systems and documentation. This demo brings the two together in one conversational workflow:
 
-- **Database questions:** Query shipment records through a restricted, read-only SQL tool.
+- **Database questions:** Query shipment records, or up to three uploaded tables including joins across them, through a restricted, read-only SQL tool.
 - **Document questions:** Retrieve relevant passages from uploaded policies using keyword and semantic search, with citations.
 - **Hybrid questions:** Combine shipment facts and applicable policies, explicitly surfacing missing information or conflicting documents.
 - **Inspectable reasoning:** The Streamlit interface shows detected intent and tool calls under **How this was answered**.
@@ -57,6 +57,7 @@ Each session starts with **60 sample shipments and three shipping-policy documen
 | **Shipment 12345 is delayed. What should I do?** | Combines shipment records with policy guidance |
 | **Which delayed shipments have passed their escalation threshold?** | Applies document rules to structured data |
 | **Shipment 12347 is late. When do I escalate it?** | Surfaces conflicting policy thresholds rather than silently choosing one |
+| **Which customer has the highest total order amount?** (after uploading `customers.csv` and `orders.csv` from [`multi_db/`](db-doc-qa/sample_data/database/multi_db/), which also holds `sales.csv`) | Joins the uploaded tables with SQL |
 
 The UI also demonstrates missing-record handling and refusal of write requests such as `Delete all rows`.
 
@@ -134,4 +135,4 @@ Runs save resolved configuration, per-case results, and metrics under `runs/`. T
 2. Add authenticated UI access, persistent session/state storage, production monitoring, and deployment automation.
 3. Improve hybrid policy selection and expand evaluation using representative real-world tasks, security tests, and latency budgets.
 
-**Demo constraints:** Up to three data files per session, each its own table (CSV/XLSX up to 500 KB; first Excel sheet only). A table is named after its file (`Sales 2024.csv` becomes `sales_2024`; a leading digit adds `t_`; a repeated name adds `_2`, `_3`), and uploading a file with a loaded file's name replaces it. The first upload replaces the sample table (`data`); up to three documents (PDF/TXT/MD, up to 1 MB and 20 pages each). Scanned or password-protected PDFs are unsupported. Replacing data resets the conversation. LLM outputs can still be inaccurate; SQL and citations are available for inspection.
+**Demo constraints:** Up to three data files per session, each its own table (CSV/XLSX up to 500 KB; first Excel sheet only). A table is named after its file (`Sales 2024.csv` becomes `sales_2024`; a leading digit adds `t_`; a repeated name adds `_2`, `_3`), and uploading a file with a loaded file's name replaces it. The first upload replaces the sample table (`data`), and removing every file restores it. Up to three documents (PDF/TXT/MD, up to 1 MB and 20 pages each). Scanned or password-protected PDFs are unsupported. Replacing data resets the conversation. LLM outputs can still be inaccurate; SQL and citations are available for inspection.

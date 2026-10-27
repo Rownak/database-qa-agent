@@ -103,7 +103,7 @@ def sql_shown(last):
 (TMP / 'v2' / 'orders.csv').write_text('order_id,customer_id,amount\n1,1,1.0\n2,2,2.0\n', encoding='utf-8')
 (TMP / 'big.csv').write_text('a,b\n' + '1,xxxxxxxxxx\n' * 50000, encoding='utf-8')
 (TMP / 'upper').mkdir()
-(TMP / 'upper' / 'Sales.CSV').write_bytes((S / 'sales.csv').read_bytes().replace(b'1001', b'9001'))
+(TMP / 'upper' / 'Sales.CSV').write_bytes((S / 'multi_db' / 'sales.csv').read_bytes().replace(b'1001', b'9001'))
 
 with sync_playwright() as p:
     b = p.chromium.launch(channel='chrome', headless=True)
@@ -113,15 +113,15 @@ with sync_playwright() as p:
     check('sample shown', any('table data · 60 rows × 11 columns' in t for t in tables(page)), str(tables(page)))
 
     print('--- single file ---')
-    upload(page, S / 'sales.csv')
+    upload(page, S / 'multi_db' / 'sales.csv')
     t = tables(page)
     check('sample replaced by sales.csv', len(t) == 1 and 'sales.csv' in t[0] and 'table sales · 50 rows × 5 columns' in t[0], str(t))
     text, last = ask(page, 'How many records are there?')
     check('count answer is 50', '50' in text, text[:150])
 
     print('--- three files and a cross-table question ---')
-    upload(page, S / 'customers.csv')
-    upload(page, S / 'orders.csv')
+    upload(page, S / 'multi_db' / 'customers.csv')
+    upload(page, S / 'multi_db' / 'orders.csv')
     t = tables(page)
     check('three tables', len(t) == 3 and all(x in ' '.join(t) for x in ('table sales', 'table customers', 'table orders')), str(t))
     text, last = ask(page, 'Which customer has the highest total order amount, and what is the total?')
@@ -145,7 +145,7 @@ with sync_playwright() as p:
 
     print('--- name collisions ---')
     end_session(page)
-    upload(page, S / 'sales.csv')
+    upload(page, S / 'multi_db' / 'sales.csv')
     upload(page, S / 'sales.xlsx')
     t = tables(page)
     check('sales and sales_2', len(t) == 2 and 'table sales ·' in t[0] and 'table sales_2 ·' in t[1], str(t))
@@ -160,8 +160,8 @@ with sync_playwright() as p:
 
     print('--- Remove ---')
     end_session(page)
-    upload(page, S / 'sales.csv')
-    upload(page, S / 'customers.csv')
+    upload(page, S / 'multi_db' / 'sales.csv')
+    upload(page, S / 'multi_db' / 'customers.csv')
     remove_first_data_file(page)
     t = tables(page)
     check('removing one keeps the other', len(t) == 1 and 'customers.csv' in t[0], str(t))
@@ -169,7 +169,7 @@ with sync_playwright() as p:
     check('removing all returns the sample', any('(sample)' in t for t in page.locator('[data-testid=stMarkdownContainer]').all_inner_texts()))
 
     print('--- documents with data files loaded ---')
-    upload(page, S / 'sales.csv')
+    upload(page, S / 'multi_db' / 'sales.csv')
     docs_remove = page.get_by_role('button', name='Remove', exact=True).nth(1)  # nth(0) is the data file
     docs_remove.click()
     page.wait_for_timeout(3000)

@@ -13,7 +13,7 @@ import pytest
 from data_agent import doc_ingest, intent, sessions
 from data_agent.agent import AGENT_MODEL, INSTRUCTION, LAKE_INSTRUCTION, build_agent, ensure_data, root_agent
 from data_agent.config import AgentConfig
-from tests.conftest import DB_SAMPLES, DOC_SAMPLES
+from tests.conftest import DB_SAMPLES, DOC_SAMPLES, sample_path
 
 
 def test_agent_definition():
@@ -377,7 +377,7 @@ def _tables(db_path):
 
 
 def test_ensure_data_builds_one_table_per_upload(root):
-    ctx = _ctx(uploads=[_file(DB_SAMPLES / "sales.csv"), _file(DB_SAMPLES / "sales.xlsx")])
+    ctx = _ctx(uploads=[_file(sample_path("sales.csv")), _file(DB_SAMPLES / "sales.xlsx")])
     ensure_data(ctx)
     assert _tables(ctx.state["db_path"]) == ["sales", "sales_2"] and "load_error" not in ctx.state
     assert set(ctx.state["column_map"]) == {"sales", "sales_2"}
@@ -386,7 +386,7 @@ def test_ensure_data_builds_one_table_per_upload(root):
 
 
 def test_ensure_data_skips_a_bad_file_and_loads_the_rest(root):
-    ctx = _ctx(uploads=[_file(DB_SAMPLES / "duplicate_header.csv"), _file(DB_SAMPLES / "sales.csv")])
+    ctx = _ctx(uploads=[_file(DB_SAMPLES / "duplicate_header.csv"), _file(sample_path("sales.csv"))])
     ensure_data(ctx)
     assert _tables(ctx.state["db_path"]) == ["sales"]
     assert "duplicate_header.csv (Duplicate column name" in ctx.state["load_error"]
@@ -404,14 +404,14 @@ def test_ensure_data_no_valid_file_uses_the_sample_and_says_so(root):
 def test_ensure_data_loads_at_most_three_files(root):
     extra = {"name": "extra.csv", "b64": base64.b64encode(b"a\n1\n").decode()}
     names = ["sales.csv", "sales.xlsx", "multi_sheet.xlsx"]
-    ctx = _ctx(uploads=[_file(DB_SAMPLES / n) for n in names] + [extra])
+    ctx = _ctx(uploads=[_file(sample_path(n)) for n in names] + [extra])
     ensure_data(ctx)
     assert _tables(ctx.state["db_path"]) == ["multi_sheet", "sales", "sales_2"]
     assert "extra.csv (only 3 data files are allowed)" in ctx.state["load_error"]
 
 
 def test_ensure_data_rebuilds_all_tables_after_db_deleted(root):
-    ctx = _ctx(uploads=[_file(DB_SAMPLES / "sales.csv"), _file(DB_SAMPLES / "multi_sheet.xlsx")])
+    ctx = _ctx(uploads=[_file(sample_path("sales.csv")), _file(DB_SAMPLES / "multi_sheet.xlsx")])
     ensure_data(ctx)
     db = Path(ctx.state["db_path"])
     db.unlink()

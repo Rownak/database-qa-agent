@@ -7,7 +7,7 @@ from streamlit.testing.v1 import AppTest
 
 from data_agent import sessions
 from data_agent.ingest import SAMPLE_FILE
-from tests.conftest import DB_SAMPLES, data_files, end_session_button
+from tests.conftest import DB_SAMPLES, data_files, end_session_button, sample_path
 
 APP = str(Path(__file__).resolve().parent.parent / "app.py")
 
@@ -94,7 +94,7 @@ def test_end_session_and_idle_expiry_remove_docs_db_with_the_folder(at):
 
 
 def _upload(at, name, data=None):
-    at.file_uploader[0].upload(name, data if data is not None else (DB_SAMPLES / name).read_bytes()).run()
+    at.file_uploader[0].upload(name, data if data is not None else sample_path(name).read_bytes()).run()
 
 
 def _tables(at):

@@ -17,7 +17,7 @@ def post(path, body):
 
 # The request body is the initial state itself (not wrapped in {"state": ...}).
 state = {'uploads': [{'name': f.name, 'b64': base64.b64encode(f.read_bytes()).decode()}
-                     for f in (S / 'customers.csv', S / 'orders.csv')]}
+                     for f in (S / 'multi_db' / 'customers.csv', S / 'multi_db' / 'orders.csv')]}
 print('create session:', post(f'/apps/{APP}/users/{USER}/sessions/{sid}', state)['id'])
 events = post('/run', {'app_name': APP, 'user_id': USER, 'session_id': sid,
                        'new_message': {'role': 'user', 'parts': [{'text': 'Which customer has the highest total order amount?'}]}})

@@ -94,11 +94,11 @@ Every phase ends with the following (CLAUDE.md):
 
 **Goal:** the verified build is live on Cloud Run and works end to end. Starts only when Phase 6.2 passes.
 
-- [ ] **Deploy** with the existing workflow in [deploy.md](../deploy/deploy.md), from `db-doc-qa/`:
+- [x] **Deploy** with the existing workflow in [deploy.md](../deploy/deploy.md), from `db-doc-qa/`:
   - backend: `adk deploy cloud_run … data_agent`, then the required `gcloud run services update data-qa-api --remove-env-vars=…` step; check `/list-apps` returns `["data_agent"]`
   - UI: `uv run python scripts/stage_ui_context.py`, then `gcloud run deploy data-qa-ui --source .ui_build …`. Check that the staged context contains the files the UI now imports
   - keep `--max-instances=1` on both services
-- [ ] **Smoke test the hosted UI** (browser, public UI URL):
+- [x] **Smoke test the hosted UI** (browser, public UI URL):
   - page loads with the sample data and sample documents
   - upload one file, ask a question, check the answer and the SQL in "How this was answered"
   - add two more files, ask a cross-table question
@@ -106,9 +106,9 @@ Every phase ends with the following (CLAUDE.md):
   - replace one file, remove one file, then End session
   - one document question still answers with citations
   - the backend log shows no errors and memory stays under the 512 MiB limit
-- [ ] **Docs:** record the new revision names, the date and the smoke-test result in `dev_docs/deploy/deploy.md` (new "Redeployed for Sprint 6" entry; note the new `uploads` state key and the replaced `upload_name` / `upload_b64`). Update the "Optional state keys" line
-- [ ] **Dev script** `phase_6_3.py`: against the hosted API, create a session with two uploads, ask one cross-table question and print the answer and tool calls (needs an ID token, as in `phase_2_6.py`)
-- [ ] **Execution log** `sprint_6_3.md`: the deployed revisions, the smoke-test outcome, and any known limits
+- [x] **Docs:** record the new revision names, the date and the smoke-test result in `dev_docs/deploy/deploy.md` (new "Redeployed for Sprint 6" entry; note the new `uploads` state key and the replaced `upload_name` / `upload_b64`). Update the "Optional state keys" line
+- [x] **Dev script** `phase_6_3.py`: against the hosted API, create a session with two uploads, ask one cross-table question and print the answer and tool calls (needs an ID token, as in `phase_2_6.py`)
+- [x] **Execution log** `sprint_6_3.md`: the deployed revisions, the smoke-test outcome, and any known limits
 
 ---
 

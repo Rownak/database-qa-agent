@@ -7,9 +7,18 @@ import pytest
 
 from data_agent.ingest import load_files
 
-DB_SAMPLES = Path(__file__).resolve().parent.parent / "sample_data" / "database"  # table fixtures, including sales.csv
+DB_SAMPLES = Path(__file__).resolve().parent.parent / "sample_data" / "database"  # table fixtures
+MULTI_DB = DB_SAMPLES / "multi_db"  # sales.csv, customers.csv and orders.csv: related tables for multi-file uploads
 DOC_SAMPLES = Path(__file__).resolve().parent.parent / "sample_data" / "documents"  # document fixtures
-SALES = DB_SAMPLES / "sales.csv"  # the v1 dataset; tool tests rely on its known values
+SALES = MULTI_DB / "sales.csv"  # the v1 dataset; tool tests rely on its known values
+
+
+def sample_path(name):
+    """Path of a table fixture by file name, looked up in ``database/`` and then ``database/multi_db/``."""
+    for folder in (DB_SAMPLES, MULTI_DB):
+        if (folder / name).is_file():
+            return folder / name
+    raise FileNotFoundError(name)
 
 
 @pytest.fixture

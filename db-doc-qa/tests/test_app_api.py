@@ -9,7 +9,7 @@ from streamlit.testing.v1 import AppTest
 
 import ui_client
 from data_agent import sessions
-from tests.conftest import DB_SAMPLES, data_files, end_session_button
+from tests.conftest import DB_SAMPLES, data_files, end_session_button, sample_path
 
 APP = str(Path(__file__).resolve().parent.parent / "app.py")
 
@@ -147,7 +147,7 @@ def test_end_session_after_upload_starts_a_sample_session(at, backend):
 
 def test_several_data_files_are_sent_in_one_uploads_list(at, backend):
     for name in ("sales.csv", "sales.xlsx"):
-        f = DB_SAMPLES / name
+        f = sample_path(name)
         at.file_uploader[0].upload(f.name, f.read_bytes()).run()
     state = backend.sessions[at.session_state.api_sid]
     assert [u["name"] for u in state["uploads"]] == ["sales.csv", "sales.xlsx"] and "docs" not in state
@@ -155,7 +155,7 @@ def test_several_data_files_are_sent_in_one_uploads_list(at, backend):
 
 
 def test_removing_every_data_file_sends_the_sample_state_again(at, backend):
-    f = DB_SAMPLES / "sales.csv"
+    f = sample_path("sales.csv")
     at.file_uploader[0].upload(f.name, f.read_bytes()).run()
     at.button(key="remove_table_sales.csv").click().run()
     assert backend.sessions == {at.session_state.api_sid: {}}
