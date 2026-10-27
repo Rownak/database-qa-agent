@@ -144,3 +144,10 @@ def test_bm25_mode_returns_only_bm25_hits(tmp_path, fake_embed):
 
     dense = retrieval.search(db, "express shipments escalation", top_k=5, query_vec=qvec, cfg=RetrievalConfig(mode="dense"))
     assert dense.hits and {h.matched_by for h in dense.hits} == {"dense"}
+
+
+def test_embedding_provider_defaults_to_gemini_and_accepts_only_known_values():
+    assert EmbeddingConfig().provider == "gemini" and EmbeddingConfig().base_url == "http://localhost:11434"
+    assert EmbeddingConfig(provider="ollama", model="nomic-embed-text:latest").provider == "ollama"
+    with pytest.raises(ValidationError):
+        EmbeddingConfig(provider="openai")

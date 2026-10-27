@@ -38,16 +38,22 @@ def _select_cases(cfg: RunConfig, cases: list[EvalCase]) -> list[EvalCase]:
     return cases[: cfg.dataset.limit] if cfg.dataset.limit else cases
 
 
-def _load_prebuilt(state_path: Path, cfg: RunConfig) -> tuple[dict, dict | None]:
+def _load_prebuilt(
+    state_path: Path, cfg: RunConfig, fallback_dir: Path | None = None, checked: dict | None = None
+) -> tuple[dict, dict | None]:
     """Loads a prebuilt bundle state (``evals.lakequest prepare``) and checks that it matches the run config.
 
     Args:
         state_path: The bundle's ``state.json``; its paths are relative to its folder.
         cfg: The run configuration.
+        fallback_dir: Where to look for ``prepare.json`` when it is not next to ``state.json``
+            (the dataset folder, for a bundle with one ``state.json`` per case).
+        checked: Optional cache ``{prepare.json path: info}`` shared between calls, so the guard
+            runs once per distinct ``prepare.json``.
 
     Returns:
         ``(state, prepare_info)``: the state with absolute ``db_path`` / ``docs_db_path``, and the
-        content of ``prepare.json`` next to it (``None`` when absent, which skips the guard).
+        content of ``prepare.json`` (``None`` when absent, which skips the guard).
 
     Raises:
         ValueError: If a database file is missing, or the chunking or embedding settings used to
@@ -61,16 +67,28 @@ def _load_prebuilt(state_path: Path, cfg: RunConfig) -> tuple[dict, dict | None]
             if not Path(state[key]).is_file():
                 raise ValueError(f"{state_path}: {key} does not exist: {state[key]}")
     info_path = base / "prepare.json"
+    if not info_path.is_file() and fallback_dir is not None:
+        info_path = fallback_dir / "prepare.json"
     if not info_path.is_file():
         return state, None
+    if checked is not None and info_path in checked:
+        return state, checked[info_path]
     info = json.loads(info_path.read_text(encoding="utf-8"))
     for key in ("chunking", "embedding"):
-        wanted = getattr(cfg.agent, key).model_dump(mode="json")
-        if info.get(key) != wanted:
+        # Missing keys read as their defaults, so a bundle written before a setting existed (for
+        # example the embedding provider) still matches; the server URL does not change the index.
+        wanted = getattr(cfg.agent, key).model_dump(mode="json", exclude={"base_url"})
+        try:
+            stored = type(getattr(cfg.agent, key)).model_validate(info.get(key) or {}).model_dump(mode="json", exclude={"base_url"})
+        except ValueError:
+            stored = info.get(key)
+        if stored != wanted:
             raise ValueError(
                 f"{key} settings differ from the prepared bundle ({info.get(key)} vs {wanted}); "
-                f"run `evals.lakequest prepare` again with this config"
+                f"run `prepare` again with this config"
             )
+    if checked is not None:
+        checked[info_path] = info
     return state, info
 
 
@@ -193,13 +211,13 @@ def run_eval(cfg: RunConfig, run_dir: Path, session_factory: Callable = AgentSes
     Returns:
         ``{"n", "errors", "latency_p50_s", "latency_p95_s", "metrics": {name: mean | None},
         "by_tag": {tag: {"n", "metrics"}}}``, plus ``"data"`` (the bundle's ``prepare.json``)
-        for a prebuilt dataset. ``n`` counts case runs (cases times repeats); an errored run
+        for a prebuilt dataset (the first ``prepare.json`` found). ``n`` counts case runs (cases times repeats); an errored run
         is scored like any other, with its empty answer.
 
     Raises:
-        ValueError: For a prebuilt dataset (``state_file``) in retrieval mode, with a missing
-            database file, or whose ``prepare.json`` chunking or embedding differs from the config.
-            This is raised before the first question.
+        ValueError: For a prebuilt dataset (``state_file`` on the dataset or on a case) in retrieval
+            mode, with a missing database file, or whose ``prepare.json`` chunking or embedding
+            differs from the config. This is raised before the first question.
 
     Side Effects:
         Writes the run folder. The config is written before the first question, so a
@@ -213,12 +231,19 @@ def run_eval(cfg: RunConfig, run_dir: Path, session_factory: Callable = AgentSes
     allowed = RETRIEVAL_METRICS if cfg.eval.mode == "retrieval" else AGENT_METRICS
     names = [m for m in cfg.eval.metrics if m in allowed]
 
-    prebuilt, data = None, None
-    if ds.state_file is not None:
+    # precedence: the case's state_file, then the dataset's, then table/docs
+    ds_dir = resolve(cfg.dataset.path).parent
+    wanted = {c.id: c.state_file or ds.state_file for c in cases}
+    prebuilt: dict[Path, dict] = {}
+    data = None
+    if any(wanted.values()):
         if cfg.eval.mode == "retrieval":
-            raise ValueError("a prebuilt dataset (state_file) can only be run in agent mode")
-        state_path = ds.state_file if ds.state_file.is_absolute() else resolve(cfg.dataset.path).parent / ds.state_file
-        prebuilt, data = _load_prebuilt(state_path, cfg)
+            raise ValueError("a prebuilt dataset (state_file, dataset or case level) can only be run in agent mode")
+        checked: dict[Path, dict] = {}
+        for rel in dict.fromkeys(p for p in wanted.values() if p is not None):
+            path = rel if rel.is_absolute() else ds_dir / rel
+            prebuilt[rel], info = _load_prebuilt(path, cfg, fallback_dir=ds_dir, checked=checked)
+            data = data or info
 
     if cfg.eval.mode == "retrieval":
         rows = _run_retrieval(cfg, cases, docs, names)
@@ -226,8 +251,9 @@ def run_eval(cfg: RunConfig, run_dir: Path, session_factory: Callable = AgentSes
         rows = []
         for case in cases:
             for repeat in range(cfg.eval.repeats):
-                state = dict(prebuilt) if prebuilt is not None else files_state([table] if table is not None else None, docs)
-                result = _ask(session_factory, cfg, state, case.question, keep_files=prebuilt is not None)
+                rel = wanted[case.id]
+                state = dict(prebuilt[rel]) if rel is not None else files_state([table] if table is not None else None, docs)
+                result = _ask(session_factory, cfg, state, case.question, keep_files=rel is not None)
                 rows.append(_row(case, repeat, result, names))
     metrics = _aggregate(rows, names)
     metrics["by_tag"] = _by_tag(rows, names)

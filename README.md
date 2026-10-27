@@ -123,6 +123,8 @@ uv run python -m evals configs/eval/bm25_only.yaml
 
 Runs save resolved configuration, per-case results, and metrics under `runs/`. The extended LakeQuest workflow requires separately downloaded benchmark data; it is not part of this quick start.
 
+**Embedding rate limits:** indexing many documents for a benchmark can hit the Gemini embedding rate limit (`ClientError`, retrieval falls back to BM25 only). For evaluation, the run config can choose a local Ollama embedding model instead (`agent.embedding.provider: ollama`, `model: nomic-embed-text:latest`, see `configs/eval/hybridqa_dev50_ollama.yaml`; needs `ollama pull nomic-embed-text`). The default stays Gemini, and a bundle must be rebuilt when the provider changes.
+
 ## Deployment status and next steps
 
 **Demonstrated GCP deployment:** Two Cloud Run services: a private ADK API (`data-qa-api`) and a public Streamlit UI (`data-qa-ui`) that invokes it using a service account. The API key is stored as a secret. Deployment instructions are in [GCP setup](db-doc-qa/dev_docs/deploy/phase_2_1_gcp_setup.md) and [deployment guide](db-doc-qa/dev_docs/deploy/deploy.md). These links assume this README is at the repository root.

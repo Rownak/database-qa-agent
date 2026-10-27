@@ -187,6 +187,8 @@ def prepare(name: str, data: bytes, chunking: ChunkingConfig | None = None) -> P
 def embed(texts: list[str], task_type: TaskType, embedding: EmbeddingConfig | None = None) -> np.ndarray | None:
     """Embeds texts (default ``gemini-embedding-001``, 768 dimensions, L2-normalised).
 
+    ``embedding.provider`` selects the backend: ``gemini`` (default) or a local ``ollama`` server.
+
     Args:
         texts: Strings to embed, sent in batches of up to 100.
         task_type: ``RETRIEVAL_DOCUMENT`` for chunks, ``RETRIEVAL_QUERY`` for queries.
@@ -200,19 +202,7 @@ def embed(texts: list[str], task_type: TaskType, embedding: EmbeddingConfig | No
     if not texts:
         return np.zeros((0, emb.dim), dtype=np.float32)
     try:
-        from dotenv import load_dotenv
-        from google import genai
-        from google.genai import types
-
-        load_dotenv()  # local runs read GOOGLE_API_KEY from .env; Cloud Run sets it directly
-        client = genai.Client()
-        config = types.EmbedContentConfig(task_type=task_type, output_dimensionality=emb.dim)
-        vectors: list[list[float]] = []
-        for i in range(0, len(texts), emb.batch):
-            resp = client.models.embed_content(
-                model=emb.model, contents=texts[i : i + emb.batch], config=config
-            )
-            vectors.extend(e.values for e in resp.embeddings)
+        vectors = _embed_ollama(texts, task_type, emb) if emb.provider == "ollama" else _embed_gemini(texts, task_type, emb)
         arr = np.asarray(vectors, dtype=np.float32)
         if arr.shape != (len(texts), emb.dim):
             raise ValueError(f"unexpected embedding shape {arr.shape}")
@@ -221,6 +211,45 @@ def embed(texts: list[str], task_type: TaskType, embedding: EmbeddingConfig | No
         return None
     norms = np.linalg.norm(arr, axis=1, keepdims=True)
     return arr / np.where(norms == 0, 1.0, norms)
+
+
+def _embed_gemini(texts: list[str], task_type: TaskType, emb: EmbeddingConfig) -> list[list[float]]:
+    """Embeds with the Gemini API, in batches of ``emb.batch``."""
+    from dotenv import load_dotenv
+    from google import genai
+    from google.genai import types
+
+    load_dotenv()  # local runs read GOOGLE_API_KEY from .env; Cloud Run sets it directly
+    client = genai.Client()
+    config = types.EmbedContentConfig(task_type=task_type, output_dimensionality=emb.dim)
+    vectors: list[list[float]] = []
+    for i in range(0, len(texts), emb.batch):
+        resp = client.models.embed_content(model=emb.model, contents=texts[i : i + emb.batch], config=config)
+        vectors.extend(e.values for e in resp.embeddings)
+    return vectors
+
+
+def _embed_ollama(texts: list[str], task_type: TaskType, emb: EmbeddingConfig) -> list[list[float]]:
+    """Embeds with a local Ollama server (``POST {base_url}/api/embed``), in batches of ``emb.batch``.
+
+    The ``nomic-embed-text`` models are trained with a task prefix, so one is added for them
+    (``search_document: `` / ``search_query: ``); other models get the text unchanged.
+    """
+    import json
+    import urllib.request
+
+    prefix = ""
+    if emb.model.startswith("nomic-embed-text"):
+        prefix = "search_document: " if task_type == "RETRIEVAL_DOCUMENT" else "search_query: "
+    vectors: list[list[float]] = []
+    for i in range(0, len(texts), emb.batch):
+        body = json.dumps({"model": emb.model, "input": [prefix + t for t in texts[i : i + emb.batch]]}).encode()
+        request = urllib.request.Request(
+            emb.base_url.rstrip("/") + "/api/embed", body, {"Content-Type": "application/json"}
+        )
+        with urllib.request.urlopen(request, timeout=300) as response:
+            vectors.extend(json.loads(response.read())["embeddings"])
+    return vectors
 
 
 def embed_options(embedding: EmbeddingConfig | None) -> dict:

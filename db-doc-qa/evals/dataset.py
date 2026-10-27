@@ -54,13 +54,18 @@ class Expected(BaseModel):
 
 
 class EvalCase(BaseModel):
-    """One question and its expectations."""
+    """One question and its expectations.
+
+    ``state_file`` is this case's own prebuilt session state (JSON, relative to the dataset
+    file); it wins over the dataset's ``state_file``, which wins over ``table`` / ``docs``.
+    """
 
     model_config = _STRICT
 
     id: str
     question: str
     tags: list[str] = Field(default_factory=list)
+    state_file: Path | None = None
     expected: Expected = Field(default_factory=Expected)
 
 
@@ -73,7 +78,7 @@ class EvalDataset(BaseModel):
         table: Table file, relative to ``db-doc-qa/``; ``None`` is the bundled sample.
         docs: A folder or a list of files; ``None`` is the bundled samples, ``[]`` no documents.
         state_file: A prebuilt session state (JSON) that replaces ``table`` and ``docs``;
-            written by ``evals.lakequest``, read by the runner in Phase 5.3.
+            written by ``evals.lakequest``; a case's own ``state_file`` takes precedence.
         cases: The cases; their ids must be unique.
     """
 

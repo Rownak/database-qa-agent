@@ -96,12 +96,12 @@ uv run python -m evals.hybridqa prepare --hybridqa ../benchmark/HybridQA \
 | 1 | `evals/hybridqa.py` (new) | `prepare` (§3) and `score` (§5.2) | Turns the benchmark into our existing formats. It changes no other module's behaviour, as with `evals/lakequest.py`. |
 | 2 | `evals/dataset.py` | Optional `state_file` on `EvalCase`; the case's value wins over the dataset's | HybridQA needs one bundle per case, while today `state_file`, `table` and `docs` are per dataset. Existing datasets are unaffected. |
 | 3 | `evals/run.py` | Load the case's state when set. The chunking and embedding guard checks the bundle-root `prepare.json` once, before the first question. Sessions on a prebuilt bundle close with `delete_files=False` (unchanged). | Reuses `_load_prebuilt` and its stale-index guard. |
-| 4 | `data_agent/config.py`, `data_agent/agent.py` | `profile: hybridqa`, a new `_PROFILES` entry (§4.1) | The `shipments` and `lakequest` instructions are about shipments and banks, and their answer formats do not fit 2-word gold answers. |
-| 5 | `evals/metrics.py` (and `MetricName`) | `exact_match` and `squad_f1` (§5.1) | `answer_f1` uses LakeQuest's tokenizer and keeps articles, so it is not the official HybridQA score. |
+| 4 | `data_agent/config.py`, `data_agent/agent.py` | Optional `AgentConfig.instruction_file`: a text file that replaces the instruction of the `profile` (§4.1) | The `shipments` and `lakequest` instructions are about shipments and banks, and their answer formats do not fit 2-word gold answers. A file keeps the name `hybridqa` out of `data_agent/`. |
+| 5 | `evals/metrics.py` (and `MetricName`), `evals/report.py`, `EvalConfig` | `exact_match` and `squad_f1` (§5.1); `eval.prediction_answer: first_line` writes the first line to `predictions.jsonl` | `answer_f1` uses LakeQuest's tokenizer and keeps articles, so it is not the official HybridQA score. |
 
-`report.py`, `runner.py`, `__main__.py` and the result files are unchanged.
+`runner.py`, `__main__.py` and the result files are unchanged (`report.py` only reads `prediction_answer`).
 
-### 4.1 `hybridqa` profile (instruction content)
+### 4.1 Instruction file (`configs/prompts/hybridqa.md`)
 
 - **Sources:** one table of a Wikipedia page (in the `{schema_summary}` slot) and articles about the entities linked from its cells, one file per entity named after it (in the `{docs_summary}` slot).
 - **Routing:**
@@ -113,6 +113,7 @@ uv run python -m evals.hybridqa prepare --hybridqa ../benchmark/HybridQA \
   - The first line is the answer alone: an entity, number, date or short phrase, with no sentence around it.
   - Then at most 2 lines of justification, citing `[Entity.md]`.
   - No "Sources:" line.
+- **Used through** `agent.instruction_file: configs/prompts/hybridqa.md`, with the same placeholders as the built-in instructions: `{schema_summary}`, `{docs_summary}`, `{load_error?}`.
 - **Settings:** `intent_enabled: false`, since the classifier prompt is about shipments. The temperature stays at 0.0.
 
 ---
@@ -165,7 +166,7 @@ uv run python -m evals.hybridqa prepare --hybridqa ../benchmark/HybridQA \
 ```yaml
 name: hybridqa_dev50
 agent:
-  profile: hybridqa
+  instruction_file: configs/prompts/hybridqa.md
   intent_enabled: false
   model:
     agent: gemini-3.5-flash-lite
@@ -178,6 +179,7 @@ eval:
   mode: agent
   metrics: [exact_match, squad_f1, answer_contains, coverage, object_f1]
   predictions: true
+  prediction_answer: first_line
 ```
 
 ```

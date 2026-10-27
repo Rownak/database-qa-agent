@@ -422,3 +422,21 @@ def test_ensure_data_rebuilds_all_tables_after_db_deleted(root):
 def test_instruction_names_the_tables_and_join_rule():
     assert "{schema_summary}" in INSTRUCTION and "JOIN" in INSTRUCTION
     assert 'a SQLite table named "data"' not in INSTRUCTION
+
+
+def test_instruction_file_replaces_the_instruction_and_keeps_the_description(tmp_path):
+    path = tmp_path / "custom.md"
+    path.write_text("Answer briefly.\n{schema_summary}\n{docs_summary}\n{load_error?}", encoding="utf-8")
+    agent = build_agent(AgentConfig(profile="lakequest", instruction_file=path))
+    assert agent.instruction == path.read_text(encoding="utf-8")
+    assert agent.description == build_agent(AgentConfig(profile="lakequest")).description
+
+
+def test_without_instruction_file_the_builtin_instructions_are_unchanged():
+    assert build_agent(AgentConfig()).instruction == INSTRUCTION
+    assert build_agent(AgentConfig(profile="lakequest")).instruction == LAKE_INSTRUCTION
+
+
+def test_a_missing_instruction_file_raises(tmp_path):
+    with pytest.raises(FileNotFoundError, match="instruction_file"):
+        build_agent(AgentConfig(instruction_file=tmp_path / "nope.md"))
