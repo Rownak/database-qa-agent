@@ -210,21 +210,21 @@ Every phase ends with the following (CLAUDE.md):
 
 **Goal:** a first internal HybridQA result per question type, confirmed by the official scorer.
 
-- [ ] **Run:** `uv run python -m evals configs/eval/hybridqa_dev50_ollama.yaml`.
-- [ ] **Official check:** run `evals.hybridqa score` on the run folder. Our `by_tag` `exact_match` and `squad_f1` (×100) must equal the official `table`, `passage` and `total` EM and F1. A difference is a metric bug, to fix before reading any result.
-- [ ] **Read the results:** for each type, look at the lowest-scoring rows in `results.jsonl` and classify each failure:
+- [x] **Run:** `uv run python -m evals configs/eval/hybridqa_dev50_ollama.yaml`.
+- [x] **Official check:** run `evals.hybridqa score` on the run folder. Our `by_tag` `exact_match` and `squad_f1` (×100) must equal the official `table`, `passage` and `total` EM and F1. A difference is a metric bug, to fix before reading any result.
+- [x] **Read the results:** for each type, look at the lowest-scoring rows in `results.jsonl` and classify each failure:
   - wrong row (SQL)
   - wrong or missing entity article
   - right article, wrong span
   - correct but worded differently (`answer_contains` = 1, EM = 0)
   - error or timeout
-- [ ] **Record** in the execution log:
+- [x] **Record** in the execution log:
   - the per-type table of design §5.2 (n, EM, F1, `answer_contains`, `object_f1`)
   - error count and p50/p95 latency
   - approximate model calls (embedding runs locally, so it has no API cost; record the `prepare` time instead)
-- [ ] **Compatibility re-check:** run `smoke.yaml` and `lakequest_bank.yaml` with `dataset.limit=2`. Their run folders have the same files and keys as before Sprint 7.
-- [ ] **Docs:** add a short "HybridQA evaluation" section to `README.md` with the `prepare`, run and `score` commands, and the note that the data is internal-only (no license on WikiTables-WithLinks).
-- [ ] **Dev script** `phase_7_4.py`: read a run folder and print our per-tag metrics next to `official_scores.json`.
+- [x] **Compatibility re-check:** run `smoke.yaml` and `lakequest_bank.yaml` with `dataset.limit=2`. Their run folders have the same files and keys as before Sprint 7.
+- [x] **Docs:** add a short "HybridQA evaluation" section to `README.md` with the `prepare`, run and `score` commands, and the note that the data is internal-only (no license on WikiTables-WithLinks).
+- [x] **Dev script** `phase_7_4.py`: read a run folder and print our per-tag metrics next to `official_scores.json`.
 
 ## Phase 7.5 — Scale Up Through Configuration
 
