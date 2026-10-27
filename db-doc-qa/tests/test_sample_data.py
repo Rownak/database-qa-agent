@@ -1,7 +1,7 @@
 """Tests for the sample_data layout and the default sample files (Phase 3.1)."""
 
 from data_agent import ingest
-from data_agent.ingest import IngestResult, load_sample
+from data_agent.ingest import LoadResult, load_sample
 from tests.conftest import DB_SAMPLES, DOC_SAMPLES
 
 
@@ -38,4 +38,4 @@ def test_markdown_fixture_has_hash_headings_and_clauses():
 
 
 def test_default_sample_still_loads(tmp_path):
-    assert isinstance(load_sample(tmp_path / "s"), IngestResult)
+    assert isinstance(load_sample(tmp_path / "s"), LoadResult)

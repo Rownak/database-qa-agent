@@ -96,13 +96,17 @@ def _ctx(session_id="s1", **state):
 
 
 def _upload(path):
-    return {"upload_name": path.name, "upload_b64": base64.b64encode(path.read_bytes()).decode()}
+    return {"uploads": [_file(path)]}
+
+
+def _file(path):
+    return {"name": path.name, "b64": base64.b64encode(path.read_bytes()).decode()}
 
 
 def test_ensure_data_builds_sample_when_no_upload(root):
     ctx = _ctx()
     assert ensure_data(ctx) is None
-    assert ctx.state["schema_summary"].startswith("shipment_id")
+    assert ctx.state["schema_summary"].startswith('"data" — 60 rows, from shipments.csv\nshipment_id')
     assert ctx.state["db_path"] == str(root / "s1" / "data.db")
     assert Path(ctx.state["db_path"]).is_file() and "load_error" not in ctx.state
 
@@ -117,11 +121,11 @@ def test_ensure_data_invalid_upload_falls_back_to_sample(root):
     ctx = _ctx(**_upload(DB_SAMPLES / "duplicate_header.csv"))
     ensure_data(ctx)
     assert "Duplicate column name" in ctx.state["load_error"]
-    assert ctx.state["schema_summary"].startswith("shipment_id")  # the sample
+    assert ctx.state["schema_summary"].startswith('"data"')  # the sample
 
 
 def test_ensure_data_corrupt_base64_falls_back_to_sample(root):
-    ctx = _ctx(upload_name="x.csv", upload_b64="***not base64***")
+    ctx = _ctx(uploads=[{"name": "x.csv", "b64": "***not base64***"}])
     ensure_data(ctx)
     assert "corrupted" in ctx.state["load_error"]
     assert Path(ctx.state["db_path"]).is_file()
@@ -362,3 +366,59 @@ def test_search_documents_uses_the_state_config_and_defaults_when_missing(root):
     del ctx.state["agent_config"]  # a session from an older server: fall back to the defaults
     out = search_documents("express shipments", top_k=5, tool_context=ctx)
     assert len(out["passages"]) > 1
+
+
+# --- several data files (Phase 6.1) ---
+
+
+def _tables(db_path):
+    with closing(sqlite3.connect(db_path)) as conn:
+        return sorted(r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'"))
+
+
+def test_ensure_data_builds_one_table_per_upload(root):
+    ctx = _ctx(uploads=[_file(DB_SAMPLES / "sales.csv"), _file(DB_SAMPLES / "sales.xlsx")])
+    ensure_data(ctx)
+    assert _tables(ctx.state["db_path"]) == ["sales", "sales_2"] and "load_error" not in ctx.state
+    assert set(ctx.state["column_map"]) == {"sales", "sales_2"}
+    assert '"sales" — 50 rows, from sales.csv' in ctx.state["schema_summary"]
+    assert '"sales_2" — 50 rows, from sales.xlsx' in ctx.state["schema_summary"]
+
+
+def test_ensure_data_skips_a_bad_file_and_loads_the_rest(root):
+    ctx = _ctx(uploads=[_file(DB_SAMPLES / "duplicate_header.csv"), _file(DB_SAMPLES / "sales.csv")])
+    ensure_data(ctx)
+    assert _tables(ctx.state["db_path"]) == ["sales"]
+    assert "duplicate_header.csv (Duplicate column name" in ctx.state["load_error"]
+    assert "sample data" not in ctx.state["load_error"]
+
+
+def test_ensure_data_no_valid_file_uses_the_sample_and_says_so(root):
+    ctx = _ctx(uploads=[_file(DB_SAMPLES / "empty.csv"), _file(DB_SAMPLES / "notes.txt")])
+    ensure_data(ctx)
+    assert _tables(ctx.state["db_path"]) == ["data"]
+    assert "empty.csv" in ctx.state["load_error"] and "notes.txt" in ctx.state["load_error"]
+    assert "sample data is being used" in ctx.state["load_error"]
+
+
+def test_ensure_data_loads_at_most_three_files(root):
+    extra = {"name": "extra.csv", "b64": base64.b64encode(b"a\n1\n").decode()}
+    names = ["sales.csv", "sales.xlsx", "multi_sheet.xlsx"]
+    ctx = _ctx(uploads=[_file(DB_SAMPLES / n) for n in names] + [extra])
+    ensure_data(ctx)
+    assert _tables(ctx.state["db_path"]) == ["multi_sheet", "sales", "sales_2"]
+    assert "extra.csv (only 3 data files are allowed)" in ctx.state["load_error"]
+
+
+def test_ensure_data_rebuilds_all_tables_after_db_deleted(root):
+    ctx = _ctx(uploads=[_file(DB_SAMPLES / "sales.csv"), _file(DB_SAMPLES / "multi_sheet.xlsx")])
+    ensure_data(ctx)
+    db = Path(ctx.state["db_path"])
+    db.unlink()
+    ensure_data(ctx)
+    assert _tables(db) == ["multi_sheet", "sales"]
+
+
+def test_instruction_names_the_tables_and_join_rule():
+    assert "{schema_summary}" in INSTRUCTION and "JOIN" in INSTRUCTION
+    assert 'a SQLite table named "data"' not in INSTRUCTION

@@ -1,7 +1,7 @@
 from pathlib import Path
 import tempfile
-from data_agent.ingest import load_file
+from data_agent.ingest import load_files
 p = Path("sample_data/database/sales.csv")
-r = load_file(p.name, p.read_bytes(), Path(tempfile.mkdtemp()) / 'session')
-print(r.row_count, r.column_count)
+r = load_files([(p.name, p.read_bytes())], Path(tempfile.mkdtemp()) / 'session')
+print(r.tables[0].row_count, r.tables[0].column_count)
 print(r.schema_summary)

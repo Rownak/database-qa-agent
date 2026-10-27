@@ -1,11 +1,11 @@
-"""Shared fixtures: a loaded copy of the sales.csv fixture in a temporary session directory."""
+"""Shared fixtures: a loaded copy of the sales.csv fixture (table ``sales``) in a temporary session directory."""
 
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
-from data_agent.ingest import load_file
+from data_agent.ingest import load_files
 
 DB_SAMPLES = Path(__file__).resolve().parent.parent / "sample_data" / "database"  # table fixtures, including sales.csv
 DOC_SAMPLES = Path(__file__).resolve().parent.parent / "sample_data" / "documents"  # document fixtures
@@ -14,9 +14,9 @@ SALES = DB_SAMPLES / "sales.csv"  # the v1 dataset; tool tests rely on its known
 
 @pytest.fixture
 def loaded(tmp_path):
-    """Returns the IngestResult for sales.csv loaded into a temp session dir."""
+    """Returns the LoadResult for sales.csv loaded into a temp session dir (one table, ``sales``)."""
     f = SALES
-    return load_file(f.name, f.read_bytes(), tmp_path / "session")
+    return load_files([(f.name, f.read_bytes())], tmp_path / "session")
 
 
 @pytest.fixture
@@ -54,6 +54,11 @@ def fake_embed(monkeypatch):
 
     monkeypatch.setattr(doc_ingest, "embed", _embed)
     return calls
+
+
+def data_files(at):
+    """The text of the "Data files" list of an AppTest run (file names, table names, row counts)."""
+    return "\n".join(m.value for m in at.markdown)
 
 
 def end_session_button(at):
