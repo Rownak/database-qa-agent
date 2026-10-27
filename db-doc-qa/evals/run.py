@@ -226,7 +226,7 @@ def run_eval(cfg: RunConfig, run_dir: Path, session_factory: Callable = AgentSes
         rows = []
         for case in cases:
             for repeat in range(cfg.eval.repeats):
-                state = dict(prebuilt) if prebuilt is not None else files_state(table, docs)
+                state = dict(prebuilt) if prebuilt is not None else files_state([table] if table is not None else None, docs)
                 result = _ask(session_factory, cfg, state, case.question, keep_files=prebuilt is not None)
                 rows.append(_row(case, repeat, result, names))
     metrics = _aggregate(rows, names)

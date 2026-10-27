@@ -6,17 +6,17 @@ A working demonstration of an enterprise assistant built with **Google Agent Dev
 
 Enterprise answers often depend on information split between operational systems and documentation. This demo brings the two together in one conversational workflow:
 
-- **Database questions:** Query shipment records through a restricted, read-only SQL tool.
+- **Database questions:** Query shipment records, or up to three uploaded tables including joins across them, through a restricted, read-only SQL tool.
 - **Document questions:** Retrieve relevant passages from uploaded policies using keyword and semantic search, with citations.
 - **Hybrid questions:** Combine shipment facts and applicable policies, explicitly surfacing missing information or conflicting documents.
 - **Inspectable reasoning:** The Streamlit interface shows detected intent and tool calls under **How this was answered**.
 
-Each session starts with **60 sample shipments and three shipping-policy documents**. Users can replace the table with a CSV/Excel file and upload their own documents. This is a **demo using uploaded snapshots**, not an integration with live enterprise systems.
+Each session starts with **60 sample shipments and three shipping-policy documents**. Users can replace the data with up to three CSV/Excel files (each becomes its own table, so questions can span tables) and upload their own documents. This is a **demo using uploaded snapshots**, not an integration with live enterprise systems.
 
 ## Architecture
 
 ```text
-  CSV / XLSX ──► Validate ──► SQLite table ───────────────────────┐
+  CSV / XLSX ──► Validate ──► SQLite tables ──────────────────────┐
                                                                 │
   PDF / TXT / MD ─► Validate ─► Chunk + embed ─► Document index ─┤
                                                                 │
@@ -57,6 +57,7 @@ Each session starts with **60 sample shipments and three shipping-policy documen
 | **Shipment 12345 is delayed. What should I do?** | Combines shipment records with policy guidance |
 | **Which delayed shipments have passed their escalation threshold?** | Applies document rules to structured data |
 | **Shipment 12347 is late. When do I escalate it?** | Surfaces conflicting policy thresholds rather than silently choosing one |
+| **Which customer has the highest total order amount?** (after uploading `customers.csv` and `orders.csv` from [`multi_db/`](db-doc-qa/sample_data/database/multi_db/), which also holds `sales.csv`) | Joins the uploaded tables with SQL |
 
 The UI also demonstrates missing-record handling and refusal of write requests such as `Delete all rows`.
 
@@ -64,7 +65,7 @@ The UI also demonstrates missing-record handling and refusal of write requests s
 
 **Safeguards**
 
-- **Upload validation:** CSV/XLSX table uploads and PDF/TXT/MD documents have format and size constraints; invalid files are rejected.
+- **Upload validation:** CSV/XLSX data-file uploads and PDF/TXT/MD documents have format and size constraints; invalid files are rejected.
 - **Restricted SQL:** Single read-only `SELECT`/`WITH` statements; 100-row output cap, 200-character cell cap, and approximately 5-second query limit.
 - **Session isolation and cleanup:** Session-specific temporary SQLite databases; cleanup on **End session**, after 30 minutes of inactivity (checked at the next interaction), or on app restart. No durable session storage.
 - **Configuration:** Validated settings in `data_agent/config.py`, with optional YAML overrides via `DATA_AGENT_CONFIG`.
@@ -134,4 +135,4 @@ Runs save resolved configuration, per-case results, and metrics under `runs/`. T
 2. Add authenticated UI access, persistent session/state storage, production monitoring, and deployment automation.
 3. Improve hybrid policy selection and expand evaluation using representative real-world tasks, security tests, and latency budgets.
 
-**Demo constraints:** One table per session (CSV/XLSX up to 500 KB; first Excel sheet only); up to three documents (PDF/TXT/MD, up to 1 MB and 20 pages each). Scanned or password-protected PDFs are unsupported. Replacing data resets the conversation. LLM outputs can still be inaccurate; SQL and citations are available for inspection.
+**Demo constraints:** Up to three data files per session, each its own table (CSV/XLSX up to 500 KB; first Excel sheet only). A table is named after its file (`Sales 2024.csv` becomes `sales_2024`; a leading digit adds `t_`; a repeated name adds `_2`, `_3`), and uploading a file with a loaded file's name replaces it. The first upload replaces the sample table (`data`), and removing every file restores it. Up to three documents (PDF/TXT/MD, up to 1 MB and 20 pages each). Scanned or password-protected PDFs are unsupported. Replacing data resets the conversation. LLM outputs can still be inaccurate; SQL and citations are available for inspection.

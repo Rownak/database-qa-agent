@@ -8,7 +8,7 @@ from pypdf import PdfReader
 from data_agent.ingest import load_sample
 
 r = load_sample(Path(tempfile.mkdtemp()))
-print(f'default sample: {r.row_count} rows x {r.column_count} columns')
+print(f'default sample: {r.tables[0].row_count} rows x {r.tables[0].column_count} columns')
 print(r.schema_summary)
 
 for f in sorted(Path('data_agent/sample_data/default/docs').iterdir()):

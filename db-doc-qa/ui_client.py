@@ -139,7 +139,7 @@ def create_session(session_id: str, state: dict) -> None:
     Args:
         session_id: Id for the new session.
         state: Initial state. ADK takes the request body as the state itself, so for an
-            upload this is ``{"upload_name": ..., "upload_b64": ...}``, and changed
+            upload this is ``{"uploads": [{"name": ..., "b64": ...}]}``, and changed
             documents add ``"docs": [{"name": ..., "b64": ...}]``; ``{}`` means "use the
             sample table and the sample documents".
 
