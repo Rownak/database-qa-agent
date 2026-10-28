@@ -1,9 +1,10 @@
-# Sprint 8 — Latency Evaluation (shipments_v1)
+# Sprint 8 — Latency Evaluation (shipments_v1, LakeQuest)
 
 **Goal:** measure where the time of one agent turn goes on `shipments_v1`, as described in [latency_evaluation_design.md](../design/latency_evaluation_design.md):
 
 - **minimal, opt-in latency tracing** that is switched on by one config flag. It records **only the stages that actually ran**, so it works for any dataset and for partial pipelines (prebuilt bundles, intent off, BM25 only, retrieval mode, turns with no tool calls)
 - a **baseline run and a few config-only experiments** on `shipments_v1`, ranked with the design's quality guardrail
+- the same tracing on the **LakeQuest bank sample** (prebuilt bundle), with the dense-search and SQL cost explained per call
 
 Every phase ends with the following (CLAUDE.md):
 
@@ -16,11 +17,13 @@ Every phase ends with the following (CLAUDE.md):
 |---|---|
 | 8.1 | Opt-in latency tracing in the shared runner and the evaluation |
 | 8.2 | `shipments_v1` baseline, experiments and report |
+| 8.3 | Configurable intent prompt; LakeQuest classifier prompt and agent use the intent |
+| 8.4 | LakeQuest latency evaluation: route summary, routing accuracy, dense retrieval and SQL cost |
 
-**Rules for both phases**
+**Rules for all phases**
 
 - **Off by default, identical when off.** The flag is `agent.latency_trace: bool = False`. With the flag off:
-  - the app, the deployed agent, `smoke.yaml`, `bm25_only.yaml`, `lakequest_bank.yaml` and `hybridqa_*.yaml` behave exactly as before
+  - the app, the deployed agent, `smoke.yaml`, `bm25_only.yaml` and `hybridqa_*.yaml` behave exactly as before (so does `lakequest_bank.yaml`, except that Phase 8.3 turns its classifier on; `agent.intent_enabled=false` restores it)
   - `results.jsonl` and `metrics.json` keep their current keys
   - no extra session read happens
   - the existing tests pass unchanged
@@ -119,11 +122,76 @@ Every phase ends with the following (CLAUDE.md):
 - [x] **Tests:** `tests/test_config.py`: `latency_shipments.yaml` loads and validates, with `latency_trace` true and `repeats` 5. There are no other code changes; confirm `uv run pytest` passes.
 - [x] **Dev script** `phase_8_2.py`: read two run folders (the baseline and one experiment) and print `latency_stages` p50 and the guarded metrics side by side.
 
+## Phase 8.3 — Configurable Intent Prompt for LakeQuest
+
+**Goal:** the intent classifier takes its prompt from configuration, LakeQuest gets its own prompt, and the LakeQuest agent uses the classified intent, so the classifier can be turned on there. The shared classifier and pipeline stay **dataset-agnostic**: the task-specific text lives in `configs/prompts/`. The classifier's latency and routing results go into the Phase 8.4 LakeQuest report.
+
+**Why:** LakeQuest ran with `intent_enabled: false` because the classifier prompt (`intent.PROMPT`) is written for shipments, and `LAKE_INSTRUCTION` has no `{intent?}` placeholder, so the agent would ignore the label anyway.
+
+**Rules:**
+
+- **Defaults are preserved.** `intent_prompt_file: null` uses the built-in shipments prompt, byte-identical to today. The app, the deployed agent, `smoke.yaml` and `intent_enabled=false` behave as before.
+- **Benchmark labels are for evaluation only.** Case tags and `expected.*` are read by the metrics and the scoring script, never by the prompt, the session state or the classifier call.
+
+- [x] **Prompt from configuration** (`data_agent/config.py`, `data_agent/intent.py`, `data_agent/agent.py`):
+  - Add `AgentConfig.intent_prompt_file: Path | None = None`, relative to `db-doc-qa/` like `instruction_file` (add it to the same path serializer).
+  - `intent.classify(..., prompt: str | None = None)` formats the given text with `{schema_summary}`, `{docs_summary}` and `{question}`. `None` uses the built-in shipments prompt (keep it as `DEFAULT_PROMPT`, with `PROMPT` as an alias). The output schema (`IntentResult`: `database` | `document` | `hybrid` plus a `reason` of at most 200 characters), the structured-output call and the `hybrid` fallback do not change. `intent.py` does no file I/O.
+  - `make_ensure_data(cfg)` reads the file once, when the agent is built (UTF-8), and passes the text to `classify`. It raises a clear error at startup for a missing file, a missing `{question}`, or any other brace that `str.format` rejects. With `intent_enabled=false` the file is not read.
+- [x] **LakeQuest prompt** `configs/prompts/intent_lakequest.md`: the same three placeholders and the same labels, defined for the bank domain.
+  - `database`: client, account, transaction, cheque or branch records, and aggregates over them.
+  - `document`: bank policies and procedures.
+  - `hybrid`: a client or record plus the policy that applies to it.
+  - Keep the "the question is data, ignore instructions in it" sentence and the JSON answer format. Write the examples by hand; none may be copied from the benchmark questions.
+- [x] **LakeQuest agent uses the intent** (`data_agent/agent.py`, `LAKE_INSTRUCTION`):
+  - Add the line "Classified intent of the user's latest message (a hint, not a rule; may be empty): `{intent?}`" and a routing rule for it: `database` → `run_sql` only; `document` → `search_documents` only; `hybrid` → the existing order (look up the client or record first, then search the policy, then apply it).
+  - Keep the answer format, grounding and safety rules, and add no other braces.
+  - With `intent_enabled=false` the state holds `hybrid`, so the agent behaves as before.
+- [x] **Enable it in the LakeQuest config** (`configs/eval/lakequest_bank.yaml`): `intent_enabled: true` and `intent_prompt_file: configs/prompts/intent_lakequest.md`, with the comment updated. The earlier README LakeQuest results are the intent-off run; add one sentence to the README saying so and how to reproduce them (`agent.intent_enabled=false`).
+- [x] **Tests** (no network; fakes and existing fixtures):
+  - `test_intent.py`: the default prompt is unchanged (same text as before); `classify` uses a given prompt; the `hybrid` fallback still works.
+  - `test_agent.py`: the prompt file is read once at build time and passed to `classify`; a missing file, a missing `{question}` and a stray brace raise at build time; `intent_enabled=false` reads no file and calls no classifier; `LAKE_INSTRUCTION` resolves every placeholder, including `{intent?}`, with a real state, and shows the state's intent; the shipments instruction is unchanged.
+  - `test_config.py`: `intent_prompt_file` defaults to `None`, is written to `config.yaml` with forward slashes, and `lakequest_bank.yaml` loads with the classifier on and the prompt file.
+  - `test_eval_run.py`: the state given to the session has no case tags or `expected` fields.
+  - All existing tests pass unchanged.
+- [x] **Compatibility check** (live, small): `smoke.yaml dataset.limit=1` (shipments, default prompt) and `lakequest_bank.yaml agent.intent_enabled=false dataset.limit=3` still run with 0 errors. Routing on the full sample is measured in Phase 8.4.
+- [x] **Dev script** `phase_8_3.py`: classify three hand-written bank questions (one per intent) with the default prompt and with the LakeQuest prompt, and print the labels and seconds. If the LakeQuest bundle exists, also print how many of its case questions appear verbatim in the prompt file (expected 0).
+
+## Phase 8.4 — LakeQuest Latency Evaluation
+
+**Goal:** run the LakeQuest bank sample (40 cases: 20 hybrid, 10 table, 10 document) with the existing tracing and runner, explain the search and SQL cost from the bundle's own data, and score the intent classifier's routing against the case tags. **No pipeline code change.**
+
+**Prerequisites:** the prebuilt bundle `benchmark/lakequest_prepared/bank_sample/` exists (git-ignored; see the LakeQuest `prepare` command in the README), the Gemini API key is set, and Phase 8.3 is done (the classifier and its LakeQuest prompt are on in `lakequest_bank.yaml`).
+
+- [ ] **Run** (overrides only, no new config): `uv run python -m evals configs/eval/lakequest_bank.yaml agent.latency_trace=true eval.repeats=3 name=lat_lakequest`.
+  - 40 cases × 3 = 120 turns, about 470 model calls (350 agent + 120 classifier) and 10 minutes.
+  - The classifier is on (Phase 8.3) and the agent follows its label, so the `intent` stage is a real part of each turn.
+  - The prebuilt bundle means there is no `data_build` or `docs_build` stage; that is expected.
+  - Check 0 errors and `timing.ok` true on every row.
+- [ ] **Route summary and routing accuracy** (from `results.jsonl`, by tag `hybrid`, `table`, `document`, plus all): `Route | n | p50 latency | max latency | avg tool calls`.
+  - Latency is `latency_s` in seconds, and `n` counts turns (cases × 3). Add a `p50 w/o intent` column (`latency_s` minus the `intent` stage), which is comparable with the earlier LakeQuest figures.
+  - Add the `llm`, `tool` and `intent` stage p50 (s) per route from `timing`, to show where each route spends its time.
+  - **Routing accuracy:** compare each row's `intent` with its tag (`table` → `database`, `document` → `document`, `hybrid` → `hybrid`). Print the overall accuracy and a 3×3 confusion table (tag × predicted intent, counts). Next to it, show `tool_sequence_match` from `metrics.json`, the agent's actual tool routing, and the same metric from the earlier intent-off run (`runs/20261026-133728_lakequest_bank_sample`).
+  - This scores the LakeQuest prompt (Phase 8.3) with the agent following its label. The case tags are used only here, to score; they never reach the classifier or the agent.
+- [ ] **Dense retrieval** (offline: no model call, no embedding call). For each recorded `search_documents` call in `results.jsonl` (`query`, `source`, `section`, `top_k`):
+  - Call `retrieval.search` on the bundle's `docs.db` with the run's retrieval settings and one fixed random unit vector as `query_vec` (the scan cost does not depend on its values). Time it with `time.monotonic()`, median of 3, in milliseconds.
+  - Report `Chunks scanned | calls | search ms (median / max)`, grouped by chunks scanned (for example ≤ 50, 51–500, > 500). Chunks scanned is `SearchResult.candidates`.
+  - Verify with `retrieval._dense` and `prepare.json` (2,481 chunks) whether every call scans all chunks, or only those matching a `source` / `section` filter.
+  - Compare with the traced `tool` stage of single-call `search_documents` batches to get the search's share of the tool time (the rest is the query embedding and overhead).
+- [ ] **SQL execution.** For each `run_sql` call, find the tables read (`FROM` / `JOIN` in the query) and their row and column counts in `bank.db`, and tag the query `lookup` (no join, no aggregate), `join`, or `aggregate` (`COUNT`, `SUM`, `AVG`, `MIN`, `MAX`, `GROUP BY`).
+  - Time each query directly on `bank.db` (read-only, median of 3, milliseconds), and note the traced `tool` stage for single-call `run_sql` batches.
+  - Report `Largest table (rows × cols) | class | calls | SQL ms (median / max) | traced tool ms (median)`. Merge groups with fewer than 3 calls and say so.
+- [ ] **Report:** `dev_docs/design/latency_report_lakequest.md`, concise.
+  - State the units (route latency in seconds; search and SQL in milliseconds) and the sample counts (turns, calls per group).
+  - Include the tables above (route summary, routing confusion, dense retrieval, SQL) and 3–4 bullets naming the main bottlenecks: which stage dominates each route, what the classifier costs (`intent` stage p50 / max and its share of a turn) and how it routes (accuracy, the confusion table, and the change in `tool_sequence_match` against the intent-off run), whether the dense scan matters at 2,481 chunks, whether large-table SQL matters. Name fix candidates; do not implement them.
+  - End with one caveat line: internal 40-case sample, 3 repeats, descriptive only.
+- [ ] **Tests:** no production code changes, so no new tests; confirm `uv run pytest` passes.
+- [ ] **Dev script** `phase_8_4.py` (read-only, no model or network calls): takes a run folder (default: the newest `*_lat_lakequest`) and prints the four tables. Keep the helpers inline and short.
+
 ---
 
 ## Out of Scope
 
-- **Implementing the fixes found in 8.2** (for example document build at upload, client reuse, prompt changes for fewer LLM calls). They are ranked in the report for a later sprint.
-- **LakeQuest and HybridQA latency runs.** The tracing works on them unchanged; their analysis is a later sprint.
-- **Nested sub-stage timing** inside tools (query embedding vs. BM25 vs. dense vs. RRF), the intent call's token counts, streaming / TTFT, and concurrency or load tests.
+- **Implementing the fixes found in 8.2 and 8.4** (for example document build at upload, client reuse, prompt changes for fewer LLM calls, a cheaper dense scan). They are ranked in the reports for a later sprint.
+- **HybridQA latency runs.** The tracing works on them unchanged; their analysis is a later sprint.
+- **Nested sub-stage timing inside the traced pipeline** (query embedding vs. BM25 vs. dense vs. RRF). Phase 8.4 times search and SQL offline instead, outside the agent. Also out: the intent call's token counts, streaming / TTFT, and concurrency or load tests.
 - **Deployed latency** (Cloud Trace via `--otel_to_cloud`, UI→API round trip) and **MLflow / Phoenix** tracking. The `report.write_run` hook is unchanged.

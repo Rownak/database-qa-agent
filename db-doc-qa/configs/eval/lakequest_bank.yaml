@@ -1,7 +1,8 @@
 name: lakequest_bank_sample
 agent:
   profile: lakequest            # LAKE_INSTRUCTION (shipments is the default)
-  intent_enabled: false         # the classifier prompt is about shipments
+  intent_enabled: true          # the classifier labels each question; LAKE_INSTRUCTION uses the label
+  intent_prompt_file: configs/prompts/intent_lakequest.md   # bank-domain classifier prompt
   model:
     agent: gemini-3.5-flash-lite
     temperature: 0.0

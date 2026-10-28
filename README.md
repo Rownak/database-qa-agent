@@ -102,7 +102,7 @@ Evaluated on 40 LakeQuest bank cases (20 hybrid, 10 database, 10 document) using
 
 Token F1 rewards wording, not correctness: table and section answers are right (`answer_contains` 1.00) but their one-token references keep `answer_f1` low. The weak spot is the hybrid type, where the agent sometimes picks the wrong policy.
 
-**Key finding:** Tool orchestration was reliable, but hybrid question answering remains the main improvement area, particularly selecting the correct policy. Results are from a small internal benchmark, not a production evaluation.
+**Key finding:** Tool orchestration was reliable, but hybrid question answering remains the main improvement area, particularly selecting the correct policy. Results are from a small internal benchmark, not a production evaluation. These LakeQuest results are from the intent-classifier-off run: `configs/eval/lakequest_bank.yaml` now turns the classifier on with a bank-domain prompt (`agent.intent_prompt_file`), so add `agent.intent_enabled=false` to reproduce them.
 
 ** Latency trace (`shipments_v1`) **
 
