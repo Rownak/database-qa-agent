@@ -35,7 +35,9 @@ def test_lakequest_profile_uses_the_lake_instruction():
     assert "bank" in agent.description
     for text in ('"transaction"', 'source set to "<policy_id>.md"', "no \"Sources:\" line", "{schema_summary}", "{docs_summary}"):
         assert text in LAKE_INSTRUCTION
-    stripped = LAKE_INSTRUCTION.replace("{schema_summary}", "").replace("{docs_summary}", "").replace("{load_error?}", "")
+    stripped = LAKE_INSTRUCTION
+    for placeholder in ("{schema_summary}", "{docs_summary}", "{intent?}", "{load_error?}"):
+        stripped = stripped.replace(placeholder, "")
     assert "{" not in stripped and "}" not in stripped  # ADK would treat any other brace as a state key
 
 

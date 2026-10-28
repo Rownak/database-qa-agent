@@ -28,7 +28,7 @@ db-doc-qa/
 │   ├── agent.py           #   orchestration: INSTRUCTION, build_agent(cfg), ensure_data, root_agent
 │   ├── runner.py          #   NEW  shared entry point: AgentSession (in-process ADK Runner)
 │   ├── events.py          #   NEW  TurnResult + parse_events (moved from ui_client, pure JSON, no ADK)
-│   ├── intent.py          #   orchestration: intent classifier (model now comes from config)
+│   ├── intent.py          #   orchestration: intent classifier (model and prompt text come from config, §3.3)
 │   ├── tools.py           #   tools: run_sql, search_documents (read settings from config)
 │   ├── retrieval.py       #   tools: BM25 + dense + RRF (parameters from RetrievalConfig)
 │   ├── ingest.py          #   ingestion: table → data.db (unchanged)
@@ -86,6 +86,7 @@ class RetrievalConfig(BaseModel):
 class AgentConfig(BaseModel):            # everything that changes an answer
     model: ModelConfig = ModelConfig()
     intent_enabled: bool = True          # False → skip classification (ablation)
+    intent_prompt_file: Path | None = None   # None → built-in shipments prompt (§3.3)
     embedding: EmbeddingConfig = EmbeddingConfig()
     chunking: ChunkingConfig = ChunkingConfig()
     retrieval: RetrievalConfig = RetrievalConfig()
@@ -114,12 +115,31 @@ Settings are passed explicitly, never through a module global. A global would br
 | Component | Today | After |
 |---|---|---|
 | Agent | `Agent(model=AGENT_MODEL, …)` at import | `build_agent(cfg)` builds the `Agent` from `cfg.model`, with `GenerateContentConfig(temperature=…)` only when it is set. `root_agent = build_agent(load_agent_config())` |
-| `ensure_data` | module function | `make_ensure_data(cfg)` returns the callback (a closure). It passes `cfg.chunking` / `cfg.embedding` to `doc_ingest.build` and `cfg.model.intent` to `intent.classify`, and it writes `state["agent_config"] = cfg.model_dump(mode="json")` when that value differs |
+| `ensure_data` | module function | `make_ensure_data(cfg)` returns the callback (a closure). It passes `cfg.chunking` / `cfg.embedding` to `doc_ingest.build` and `cfg.model.intent` (and the text of `cfg.intent_prompt_file`, §3.3) to `intent.classify`, and it writes `state["agent_config"] = cfg.model_dump(mode="json")` when that value differs |
 | `search_documents` | module constants | Reads `RetrievalConfig` / `EmbeddingConfig` from `tool_context.state["agent_config"]`, falling back to the defaults. This is the same pattern tools already use for `db_path`, and it records the config used in every session |
 | `doc_ingest.build/prepare/embed`, `retrieval.search` | module constants | Optional `chunking=`, `embedding=`, `cfg=` keyword arguments whose defaults are the default models, so existing callers and tests do not change. `retrieval.search` skips BM25 or dense search according to `mode` |
 | Old constants | — | Kept for one sprint as aliases (`CHUNK_WORDS = ChunkingConfig().chunk_words`) so tests and imports keep working, then removed |
 
 The UI preview (`doc_ingest.prepare`) keeps using the default chunking. Only the evaluation varies chunking, and there the whole pipeline runs in-process.
+
+### 3.3 Task-Specific Intent Prompt (Sprint 8, Phase 8.3)
+
+The classifier's wording is data, not logic. A task brings its own prompt through configuration, so the shared classifier and pipeline name no dataset.
+
+- **Setting:** `agent.intent_prompt_file`, a path relative to `db-doc-qa/` (default `None`). `None` keeps the built-in shipments prompt (`intent.DEFAULT_PROMPT`), so the app, the deployed agent and every existing config behave exactly as before.
+- **Loading:** `make_ensure_data(cfg)` reads the file once, when the agent is built (as `build_agent` does for `instruction_file`), and passes the text to `intent.classify(..., prompt=text)`. `intent.check_prompt` rejects a missing `{question}`, an unknown placeholder or a stray brace at that point, so a bad file fails at startup instead of falling back to `hybrid` on every turn. The file is not read when `intent_enabled` is false. `intent.py` does no file I/O.
+- **Contract:** a prompt may use `{schema_summary}`, `{docs_summary}` and `{question}`. The output schema (`IntentResult`: `database` | `document` | `hybrid` plus a `reason` of at most 200 characters) is fixed in code and enforced by the structured-output call, whatever the prompt says. A failure still falls back to `hybrid`.
+- **Consuming the label:** the label reaches the orchestrator through the `{intent?}` placeholder of the instruction. The shipments instruction already had it; the `lakequest` profile now has it too, with a routing rule (`database` → `run_sql` only, `document` → `search_documents` only, `hybrid` → look up the record, then search the policy). It stays a hint in the instruction, never a block in code. With the classifier off the state holds `hybrid`, the unrestricted route, which is the previous behaviour.
+- **Example** (`configs/eval/lakequest_bank.yaml`; the prompt is `configs/prompts/intent_lakequest.md`):
+
+  ```yaml
+  agent:
+    profile: lakequest
+    intent_enabled: true
+    intent_prompt_file: configs/prompts/intent_lakequest.md
+  ```
+
+- **Benchmark labels are for scoring only.** Case tags and `expected.*` are never passed to the classifier, written into a prompt (its examples are hand-written) or put in the session state. The planned `intent_accuracy` metric (§5.3) would compare the recorded `intent` with the case's tag after the run.
 
 ## 4. Shared Agent Entry Point (`data_agent/runner.py`, `data_agent/events.py`)
 
@@ -317,6 +337,7 @@ Steps 1–2 can be merged into one phase if preferred.
 
 **Other**
 - `TurnResult` is shared by the app's local and API modes, so a later `eval.target: api` could evaluate the deployed service through `ui_client`. It is not included now, because the deployed config cannot be controlled from YAML and the recorded config would be wrong.
+- **Another task's classifier (for example HybridQA):** a new prompt file under `configs/prompts/` plus an instruction that contains `{intent?}`, both selected in YAML (§3.3). No change to `intent.py`.
 - **More metrics:** each one is one function in `metrics.py` (§5.3). A metric that needs new expected values adds an optional field to `Expected`.
 - **Retrieval-only mode:** build `docs.db` once and call `retrieval.search` per case, with `section_recall` and `mrr`. It needs no LLM, and `run_eval` gains a second loop.
 - **Benchmark dataset:** another file of the §5.1 shape, selected with `dataset.path`. Repeats and a `fail_under` gate can be added to `EvalConfig` once the variance is known.

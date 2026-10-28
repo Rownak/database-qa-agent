@@ -71,39 +71,6 @@ The UI also demonstrates missing-record handling and refusal of write requests s
 
 <!-- **Measured benchmark — LakeQuest bank sample:** An internal 40-case run (20 hybrid, 10 database, 10 document) reported **0.97 tool-sequence match**, **0.79 section recall**, **2.8 s p50**, and **6.3 s p95** latency. Overall token-level `answer_f1` was **0.34**; hybrid cases were the principal weakness, including incorrect policy selection. These are internal sample results, **not a production SLA or public benchmark leaderboard score**. See the evaluation commands below. -->
 
-## Evaluation
-
-** [HybridQA Dataset](https://github.com/wenhuchen/HybridQA) **
-
-Evaluated on a 50-question sample (25 table, 25 passage) of the public HybridQA **dev set**, not the full dev set or the hidden test set, using Gemini 3.5 Flash-Lite, with local `nomic-embed-text` embeddings (Ollama). Each question gets its own Wikipedia table and the articles linked from its cells (the standard "gold table" setting).
-(0 errors, p50 4.6 s, p95 24.5 s). **HybridQA metrics are percentages (0–100)**, as in the official scorer:
-
-| Type | EM | F1 | `answer_contains` |
-|---|---|---|---|
-| table (25) | 68.0 | 78.2 | 88 |
-| passage (25) | 56.0 | 69.3 | 76 |
-| **overall** | **62.0** | **73.8** | **82** |
-
-EM and F1 score the first line of the answer and match the official HybridQA scorer exactly. `answer_contains` is the lenient check: the gold answer appears anywhere in the answer. Of the 19 questions with EM 0, 8 were right but worded differently (an added unit or word, such as `104 kg` for `104`), 5 had the right article but the wrong span, 4 used the wrong table row, and 2 used the wrong or a missing article.
-
-**Key finding:** Answer wording, not retrieval, is the largest single cause of lost EM. Results are one run on a small internal sample (one question is 2 points), not a leaderboard score. The data is internal-use only.
-
-** [LakeQuest Dataset](https://github.com/michael0402/LakeQuest/) **
-
-Evaluated on 40 LakeQuest bank cases (20 hybrid, 10 database, 10 document) using Gemini 3.5 Flash-Lite.
-(0 errors, p50 2.8 s, p95 6.3 s;):
-
-| Type | `answer_f1` | `object_f1` | `tool_sequence_match` | `section_recall` |
-|---|---|---|---|---|
-| hybrid (20) | 0.33 | 0.59 | 0.95 | 0.58 |
-| table (10) | 0.31 | 0.66 | 1.00 | – |
-| document (10) | 0.38 | 1.00 | 1.00 | 1.00 |
-| **overall** | **0.34** | **0.71** | **0.97** | **0.79** |
-
-Token F1 rewards wording, not correctness: table and section answers are right (`answer_contains` 1.00) but their one-token references keep `answer_f1` low. The weak spot is the hybrid type, where the agent sometimes picks the wrong policy.
-
-**Key finding:** Tool orchestration was reliable, but hybrid question answering remains the main improvement area, particularly selecting the correct policy. Results are from a small internal benchmark, not a production evaluation.
-
 ## Local quick start
 
 **Requirements:** Python 3.12, [uv](https://docs.astral.sh/uv/), and a [Google AI Studio API key](https://aistudio.google.com/apikey).
@@ -138,7 +105,84 @@ uv run python -m evals configs/eval/bm25_only.yaml
 
 Runs save resolved configuration, per-case results, and metrics under `runs/`. The extended LakeQuest workflow requires separately downloaded benchmark data; it is not part of this quick start.
 
+**Latency trace** (off by default; needs the API key, about 3 minutes):
+
+```bash
+uv run python -m evals configs/eval/latency_shipments.yaml                         # tracing on, 30 turns
+uv run python -m evals configs/eval/smoke.yaml agent.latency_trace=true dataset.limit=1   # quick check
+```
+
+The summary prints a `stage p50` line and per-tag latency. Each `results.jsonl` row gets a `timing` object and `metrics.json` gets `latency_stages`. Add `agent.intent_enabled=false` (or any other `key=value`) to compare a change.
+
 **Embedding rate limits:** indexing many documents for a benchmark can hit the Gemini embedding rate limit (`ClientError`, retrieval falls back to BM25 only). For evaluation, the run config can choose a local Ollama embedding model instead (`agent.embedding.provider: ollama`, `model: nomic-embed-text:latest`, see `configs/eval/hybridqa_dev50_ollama.yaml`; needs `ollama pull nomic-embed-text`). The default stays Gemini, and a bundle must be rebuilt when the provider changes.
+
+## Evaluation
+
+### [HybridQA Dataset](https://github.com/wenhuchen/HybridQA)
+
+Evaluated on a 50-question sample (25 table, 25 passage) of the public HybridQA **dev set**, not the full dev set or the hidden test set, using Gemini 3.5 Flash-Lite, with local `nomic-embed-text` embeddings (Ollama). Each question gets its own Wikipedia table and the articles linked from its cells (the standard "gold table" setting).
+(0 errors, p50 4.6 s, p95 24.5 s). **HybridQA metrics are percentages (0–100)**, as in the official scorer:
+
+| Type | EM | F1 | `answer_contains` |
+|---|---|---|---|
+| table (25) | 68.0 | 78.2 | 88 |
+| passage (25) | 56.0 | 69.3 | 76 |
+| **overall** | **62.0** | **73.8** | **82** |
+
+EM and F1 score the first line of the answer and match the official HybridQA scorer exactly. `answer_contains` is the lenient check: the gold answer appears anywhere in the answer. Of the 19 questions with EM 0, 8 were right but worded differently (an added unit or word, such as `104 kg` for `104`), 5 had the right article but the wrong span, 4 used the wrong table row, and 2 used the wrong or a missing article.
+
+**Key finding:** Answer wording, not retrieval, is the largest single cause of lost EM. Results are one run on a small internal sample (one question is 2 points), not a leaderboard score. The data is internal-use only.
+
+### [LakeQuest Dataset](https://github.com/michael0402/LakeQuest/)
+
+Evaluated on 40 LakeQuest bank cases (20 hybrid, 10 database, 10 document) using Gemini 3.5 Flash-Lite.
+(0 errors, p50 2.8 s, p95 6.3 s;):
+
+| Type | `answer_f1` | `object_f1` | `tool_sequence_match` | `section_recall` |
+|---|---|---|---|---|
+| hybrid (20) | 0.33 | 0.59 | 0.95 | 0.58 |
+| table (10) | 0.31 | 0.66 | 1.00 | – |
+| document (10) | 0.38 | 1.00 | 1.00 | 1.00 |
+| **overall** | **0.34** | **0.71** | **0.97** | **0.79** |
+
+Token F1 rewards wording, not correctness: table and section answers are right (`answer_contains` 1.00) but their one-token references keep `answer_f1` low. The weak spot is the hybrid type, where the agent sometimes picks the wrong policy.
+
+**Key finding:** Tool orchestration was reliable, but hybrid question answering remains the main improvement area, particularly selecting the correct policy. Results are from a small internal benchmark, not a production evaluation. These LakeQuest results are from the intent-classifier-off run: `configs/eval/lakequest_bank.yaml` now turns the classifier on with a bank-domain prompt (`agent.intent_prompt_file`), so add `agent.intent_enabled=false` to reproduce them.
+
+### Latency trace (`shipments_v1`)
+
+Opt-in per-stage timing (`agent.latency_trace: true`) on 6 cases × 5 repeats, Gemini 3.5 Flash-Lite, in-process. Median query time (without document ingestion) was 3.7 s, p95 7.4 s.
+
+| Finding | Measurement |
+|---|---|
+| Model calls dominate | 47–66 % of a turn, about 0.7 s per call; latency follows the number of calls (1–6 per turn) |
+| Intent classifier | About 0.8 s per turn; turning it off cut the median by 22 % (3.7 s → 2.8 s), with 1 extra tool call in 30 turns |
+| Document search | 0.31 s per call, almost all query embedding; the search itself is about 1 ms |
+| Slowest case | Record with no matching policy: 6 model calls, 7.0 s median |
+| Noise | Two identical runs differ by about 0.5 s, so smaller gains are not meaningful |
+
+**Caveat:** These numbers come from a very small dataset (6 questions, 30 turns per run), so they show where time goes, not a production latency estimate. Detail report [latency_report.md](dev_docs/design/latency_report.md).
+
+### Latency trace (LakeQuest)
+
+40 bank cases × 3 repeats (120 turns, 0 errors) with the intent classifier on; latency in seconds, search and SQL in milliseconds.
+
+| Route | n | p50 (s) | max (s) | p50 without classifier (s) | avg tool calls |
+|---|---|---|---|---|---|
+| hybrid | 60 | 5.0 | 13.5 | 3.7 | 2.88 |
+| table | 30 | 2.8 | 4.9 | 1.8 | 1.00 |
+| document | 30 | 3.4 | 4.9 | 2.2 | 1.03 |
+| **all** | **120** | **3.6** | **13.5** | **2.5** | **1.95** |
+
+| Component (replayed offline on the bundle) | Calls | Median (ms) | Max (ms) |
+|---|---|---|---|
+| Dense search, filtered by source/section (≤ 50 chunks) | 80 | 12.5 | 16.0 |
+| Dense search, all 2,481 chunks | 40 | 24.3 | 31.6 |
+| SQL, tables up to 125,742 rows | 104 | 0.14–0.15 per group | 0.52 |
+
+Hybrid turns are the slow tail (model calls are about two thirds of them). The classifier costs about 1.1 s per turn and routes 98.3 % correctly, with no measurable gain in tool choice. Search is under 25 ms (the rest of its ~0.34 s call is the query embedding), and SQL is negligible.
+
+**Caveat:** an internal 40-case sample, descriptive only. Details: [latency_report_lakequest.md](dev_docs/design/latency_report_lakequest.md).
 
 ## Deployment status and next steps
 

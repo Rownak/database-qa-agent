@@ -6,6 +6,11 @@ writes the result to the session state, where the instruction reads it as a rout
 hint. The label is guidance only: it never blocks a tool. Any failure falls back to
 ``hybrid``, the one intent that does not narrow the tools, so a bad classification
 cannot stop an answer.
+
+The prompt is data, not logic: :func:`classify` takes the prompt text as an argument and
+uses :data:`DEFAULT_PROMPT` (written for shipments) when none is given. A task-specific
+prompt lives in a file named by ``agent.intent_prompt_file``; the caller reads it and
+checks it with :func:`check_prompt`. This module does no file I/O and names no dataset.
 """
 
 from typing import Literal
@@ -19,7 +24,7 @@ logger = get_logger(__name__)
 
 FALLBACK_REASON = "classifier_fallback"
 
-PROMPT = """\
+DEFAULT_PROMPT = """\
 Classify the user's question for a shipment assistant that has two sources:
 - database tables built from the user's data files (the sample is shipment records)
 - policy documents (delay policies, procedures, guidelines)
@@ -46,6 +51,35 @@ Question:
 """
 
 
+PROMPT = DEFAULT_PROMPT  # the name before the prompt became configurable; kept for existing imports
+
+
+def check_prompt(text: str) -> str:
+    """Checks that a classifier prompt can be formatted by :func:`classify`.
+
+    Args:
+        text: The prompt text, with ``{schema_summary}``, ``{docs_summary}`` and ``{question}``.
+
+    Returns:
+        ``text`` unchanged.
+
+    Raises:
+        ValueError: If ``{question}`` is missing, or ``str.format`` rejects the text (an
+            unknown placeholder or a stray brace). Checked when the agent is built, so a bad
+            file fails at startup and not as a silent ``hybrid`` fallback on every turn.
+    """
+    if "{question}" not in text:
+        raise ValueError("the intent prompt must contain the {question} placeholder")
+    try:
+        text.format(schema_summary="", docs_summary="", question="")
+    except (KeyError, IndexError, ValueError) as exc:
+        raise ValueError(
+            f"the intent prompt may only use {{schema_summary}}, {{docs_summary}} and {{question}} "
+            f"(bad placeholder or stray brace: {exc})"
+        ) from exc
+    return text
+
+
 class IntentResult(BaseModel):
     """Validated classification of one user message.
 
@@ -69,6 +103,7 @@ def classify(
     docs_summary: str | None = None,
     *,
     model: str | None = None,
+    prompt: str | None = None,
 ) -> IntentResult:
     """Classifies a question as ``database``, ``document`` or ``hybrid``.
 
@@ -78,6 +113,9 @@ def classify(
         docs_summary: Loaded-document summary, for context. Missing values read as "(none)".
         model: Gemini model id. Defaults to ``ModelConfig().agent``; the caller passes
             ``cfg.model.intent or cfg.model.agent``.
+        prompt: Prompt text with ``{schema_summary}``, ``{docs_summary}`` and ``{question}``
+            (see :func:`check_prompt`). Defaults to :data:`DEFAULT_PROMPT`. The output schema
+            is :class:`IntentResult` whatever the prompt says.
 
     Returns:
         A validated :class:`IntentResult`. On an empty question, an API error, empty
@@ -97,7 +135,7 @@ def classify(
 
         load_dotenv()
         model = model or ModelConfig().agent
-        prompt = PROMPT.format(
+        prompt = (prompt or DEFAULT_PROMPT).format(
             schema_summary=schema_summary or "(none)",
             docs_summary=docs_summary or "(none)",
             question=question,
