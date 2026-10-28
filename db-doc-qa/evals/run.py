@@ -137,28 +137,28 @@ def _retrieve(db_path: Path, question: str, cfg: RunConfig) -> TurnResult:
     The hits are shaped like the tool's passages, so the same metrics apply in both
     modes. A failure becomes ``TurnResult.error``.
     """
-    started = time.monotonic()
+    started = time.perf_counter()  # same clock as the agent trace (see AgentSession.ask_async)
     rcfg = cfg.agent.retrieval
     stages: list[dict] = []  # with latency_trace: the steps that ran (no embedding with bm25)
     try:
         vec = None
         if rcfg.mode != "bm25":  # BM25-only retrieval needs no query embedding
             vec = doc_ingest.embed([question], "RETRIEVAL_QUERY", **doc_ingest.embed_options(cfg.agent.embedding))
-            stages.append({"stage": "query_embedding", "s": time.monotonic() - started})
-        mark = time.monotonic()
+            stages.append({"stage": "query_embedding", "s": time.perf_counter() - started})
+        mark = time.perf_counter()
         found = retrieval.search(
             db_path, question, top_k=rcfg.max_top_k, query_vec=None if vec is None else vec[0], cfg=rcfg
         )
-        stages.append({"stage": "search", "s": time.monotonic() - mark})
+        stages.append({"stage": "search", "s": time.perf_counter() - mark})
         passages = [
             {"source": h.source, "section_number": h.section_number, "section_path": h.section_path, "matched_by": h.matched_by}
             for h in found.hits
         ]
         calls = [{"name": "search_documents", "args": {"query": question}, "response": {"passages": passages}}]
-        latency = time.monotonic() - started
+        latency = time.perf_counter() - started
         return TurnResult("", calls, None, latency, None, _trace(cfg, stages, latency))
     except Exception as exc:
-        latency = time.monotonic() - started
+        latency = time.perf_counter() - started
         return TurnResult("", [], None, latency, f"{type(exc).__name__}: {exc}", _trace(cfg, stages, latency))
 
 

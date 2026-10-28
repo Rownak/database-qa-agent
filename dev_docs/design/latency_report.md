@@ -7,7 +7,7 @@ Measured with `agent.latency_trace=true` on `evals/datasets/shipments_v1.yaml` (
 1. **Model calls are the bottleneck.** They are 47–66 % of the turn for every case except the refusal, and the time scales with the *number* of calls (1 to 6 per turn), not with their size: one call takes about 0.7 s whatever its input.
 2. **The intent classifier costs about 0.8 s per turn**, a serial call that is 11–36 % of the turn. Turning it off cut the median query time by **22 %** (3.66 s → 2.84 s), beyond the run-to-run spread, at the cost of one routing deviation in 30 turns.
 3. **The tail comes from one case.** `no_policy_refrigerated` (a record with no matching policy) makes 6 model calls and 5 tool calls, uses about 19.5k input tokens and takes 7.0 s, against 2.6–4.2 s for the other cases.
-4. **A `search_documents` call costs 0.31 s, and that is almost all the query embedding** (312 ms); the search itself takes under 1 ms. SQL is under 10 ms.
+4. **A `search_documents` call costs 0.31 s, and that is almost all the query embedding** (312 ms); the search itself takes about 1 ms on this 37-chunk corpus and a SQL point lookup about 0.1 ms (measured offline with a high-resolution timer; the runs in this report were traced with `time.monotonic()`, which ticks every ~15.6 ms on Windows and reads such stages as 0. The tracing now uses `perf_counter`, so later runs resolve them).
 5. **`max_top_k=4` and BM25-only are not worth it** for latency (§5).
 6. Differences below about **0.5 s (13 %) in the median** are within the run-to-run spread of this sample.
 
@@ -61,7 +61,7 @@ Quality also moves by one turn between identical runs, so the guardrail below al
 | Baseline (A, B pooled) | 3.66 (3.31, 3.77) | 7.42 | 2.87 / 7.8k | — | — |
 | `intent_enabled=false` | **2.84** (−0.82, −22 %) | 6.50 (−0.92) | 2.90 / 7.8k | `db_location` `tool_sequence_match` 1.00 → 0.80 (1 of 5 turns also called `search_documents`); every other per-case value is equal, higher, or at most 0.03 lower (`no_policy_refrigerated` `citation_precision` 0.96 → 0.93); `refuse_write` refuses, 0 tools | **Accepted, conditionally** |
 | `retrieval.max_top_k=4` | 3.34 (−0.32, −9 %) | 8.14 (+0.7) | 2.97 / 8.2k | `no_policy_refrigerated` `answer_contains` 0.90 → 0.80; others unchanged | **Rejected** |
-| Retrieval only, BM25 vs hybrid | search 0.0 ms vs query embedding 312 ms + search 0.0 ms (per query, 20 queries each) | — | no model calls | raw-question retrieval: `section_recall` 0.38 (BM25) vs 0.50 (hybrid) | **Rejected** as a latency fix |
+| Retrieval only, BM25 vs hybrid | query embedding 312 ms per query (20 queries); the search is ~0.7 ms (BM25) / ~0.9 ms (hybrid), measured offline, below the run timer's 15.6 ms tick | — | no model calls | raw-question retrieval: `section_recall` 0.38 (BM25) vs 0.50 (hybrid) | **Rejected** as a latency fix |
 
 - **`intent_enabled=false`: conditionally accepted.** The gain is the largest measured and exceeds the spread, and the guardrail is met on the plan's rule (exactly one repeat of one case). It is not a free change, though: the single deviation is the routing mistake the classifier prevents ("database" hint → do not search documents), n=5 per case is small, and the run-to-run spread of the quality metrics is about the same size. **Do not change the app default until a repeat run (≥3 × 5 turns) shows the deviation rate is still low.**
 - **`max_top_k=4`: rejected.** The 9 % median gain sits inside the baseline spread (3.31–3.77), p95 got worse, and input tokens did not fall (the agent searched a little more), consistent with model time being flat in prompt size.
@@ -75,7 +75,7 @@ Quality also moves by one turn between identical runs, so the guardrail below al
 | H2 | The intent call adds a serial round trip | **Confirmed** | 0.80–0.87 s per turn, 11–36 % of the total; turning it off saved 0.82 s (22 %) in the median |
 | H3 | The model-call count, not per-call speed, drives latency | **Confirmed** | Calls per case 1 / 2 / 2 / 3 / 3 / 6 track `query_s` (1.6 / 2.6 / 2.7 / 4.2 / 3.9 / 7.0 s); one call is about 0.7 s whatever the prompt |
 | H4 | Input tokens grow per call and slow the model | **Rejected as a latency lever** | Per-call time is flat in input tokens (0.72 s vs 0.75 s for the lower and upper half); `max_top_k=4` gave no gain beyond the spread |
-| H5 | The query embedding is a noticeable part of the tool time | **Confirmed** | 312 ms per query embedding vs <1 ms for the search; `search_documents` tool stage 0.30–0.34 s per call; 1.06 s in the 5-tool-call case |
+| H5 | The query embedding is a noticeable part of the tool time | **Confirmed** | 312 ms per query embedding vs about 1 ms for the search (offline timer); `search_documents` tool stage 0.30–0.34 s per call; 1.06 s in the 5-tool-call case |
 | H6 | A new `genai.Client()` per classification adds connection setup | **Not tested** | Every turn creates a client, so first-turn vs later turns cannot separate it; the first-turn `intent` stage was not slower (0.85 s vs 0.82 s). Needs a one-off micro-benchmark |
 | H7 | Retries or errors inflate the tail | **Rejected on this dataset** | 0 errors in 120 agent turns; `run_sql` was never called twice in the 60 baseline turns. The tail is explained by H3 (extra searches in the gap case), not by retries |
 

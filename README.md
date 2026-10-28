@@ -112,13 +112,34 @@ Opt-in per-stage timing (`agent.latency_trace: true`) on 6 cases × 5 repeats, G
 |---|---|
 | Model calls dominate | 47–66 % of a turn, about 0.7 s per call; latency follows the number of calls (1–6 per turn) |
 | Intent classifier | About 0.8 s per turn; turning it off cut the median by 22 % (3.7 s → 2.8 s), with 1 extra tool call in 30 turns |
-| Document search | 0.31 s per call, almost all query embedding; the search itself is under 1 ms |
+| Document search | 0.31 s per call, almost all query embedding; the search itself is about 1 ms |
 | Slowest case | Record with no matching policy: 6 model calls, 7.0 s median |
 | Noise | Two identical runs differ by about 0.5 s, so smaller gains are not meaningful |
 
 **Caveat:** These numbers come from a very small dataset (6 questions, 30 turns per run), so they show where time goes, not a production latency estimate.
 
 Details: [latency_report.md](dev_docs/design/latency_report.md).
+
+** Latency trace (LakeQuest) **
+
+40 bank cases × 3 repeats (120 turns, 0 errors) with the intent classifier on; latency in seconds, search and SQL in milliseconds.
+
+| Route | n | p50 (s) | max (s) | p50 without classifier (s) | avg tool calls |
+|---|---|---|---|---|---|
+| hybrid | 60 | 5.0 | 13.5 | 3.7 | 2.88 |
+| table | 30 | 2.8 | 4.9 | 1.8 | 1.00 |
+| document | 30 | 3.4 | 4.9 | 2.2 | 1.03 |
+| **all** | **120** | **3.6** | **13.5** | **2.5** | **1.95** |
+
+| Component (replayed offline on the bundle) | Calls | Median (ms) | Max (ms) |
+|---|---|---|---|
+| Dense search, filtered by source/section (≤ 50 chunks) | 80 | 12.5 | 16.0 |
+| Dense search, all 2,481 chunks | 40 | 24.3 | 31.6 |
+| SQL, tables up to 125,742 rows | 104 | 0.14–0.15 per group | 0.52 |
+
+Hybrid turns are the slow tail (model calls are about two thirds of them). The classifier costs about 1.1 s per turn and routes 98.3 % correctly, with no measurable gain in tool choice. Search is under 25 ms (the rest of its ~0.34 s call is the query embedding), and SQL is negligible.
+
+**Caveat:** an internal 40-case sample, descriptive only. Details: [latency_report_lakequest.md](dev_docs/design/latency_report_lakequest.md).
 
 ## Local quick start
 

@@ -60,8 +60,11 @@ BM25 has no `query_embedding`).
 
 In `eval.mode: retrieval` the stages are `query_embedding` (absent with `bm25`) and `search`.
 
-**Derivation from event arrival times.** In `ask_async`, record `time.monotonic() - started`
-as each event is yielded. The runner does not stream, so a model event arrives when its LLM
+**Derivation from event arrival times.** In `ask_async`, record `time.perf_counter() - started`
+as each event is yielded. (`perf_counter`, not `monotonic`: on Windows `monotonic` ticks only
+every ~15.6 ms, which rounds a SQL call or a search to 0. All timers that feed the trace and
+`latency_s` use `perf_counter`; the SQL timeout in `tools.py` is a deadline and keeps
+`monotonic`.) The runner does not stream, so a model event arrives when its LLM
 call has finished:
 
 ```text

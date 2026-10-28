@@ -290,7 +290,7 @@ def _build_session_docs(state, session_id: str, cfg: AgentConfig) -> float | Non
         document was usable) and ``docs_summary``, and appends the skipped documents
         to ``load_error`` (once). Logs counts only, never document text.
     """
-    started = time.monotonic()
+    started = time.perf_counter()  # also the step timers below: perf_counter has sub-millisecond resolution on Windows
     docs = state.get("docs")
     source = "upload" if docs is not None else "sample"
     if docs is None:
@@ -316,7 +316,7 @@ def _build_session_docs(state, session_id: str, cfg: AgentConfig) -> float | Non
             state["load_error"] = notice
         elif notice not in previous:  # a rebuild must not repeat an earlier notice
             state["load_error"] = f"{previous}\n{notice}"
-    elapsed = time.monotonic() - started
+    elapsed = time.perf_counter() - started
     logger.info(
         "session %s: documents built from %s, %d skipped, embedded=%s, %.2fs",
         session_id, source, len(result.skipped), result.embedded, elapsed,
@@ -360,7 +360,7 @@ def _classify_turn(
     if not cfg.intent_enabled:
         state["intent"], state["intent_reason"] = "hybrid", "intent_disabled"
         return None
-    started = time.monotonic()
+    started = time.perf_counter()
     extra = {} if intent_prompt is None else {"prompt": intent_prompt}  # the default call stays as it was
     result = intent.classify(
         question,
@@ -369,7 +369,7 @@ def _classify_turn(
         model=cfg.model.intent or cfg.model.agent,
         **extra,
     )
-    elapsed = time.monotonic() - started
+    elapsed = time.perf_counter() - started
     state["intent"], state["intent_reason"] = result.intent, result.reason
     logger.info("session %s: intent=%s (%s)", callback_context.session.id, result.intent, result.reason)
     return elapsed
@@ -390,7 +390,7 @@ def _build_session_data(state, session_id: str) -> float | None:
         be loaded is skipped and named in ``load_error``; the rest still load. Never
         logs file contents.
     """
-    started = time.monotonic()
+    started = time.perf_counter()
     session_dir = sessions.new_session_dir(session_id, sessions.ROOT)  # explicit so tests can redirect ROOT
     uploads = state.get("uploads") or []
     source = "upload" if uploads else "sample"
@@ -417,7 +417,7 @@ def _build_session_data(state, session_id: str) -> float | None:
     state["db_path"] = str(result.db_path)
     state["column_map"] = result.column_map
     state["schema_summary"] = result.schema_summary
-    elapsed = time.monotonic() - started
+    elapsed = time.perf_counter() - started
     logger.info(
         "session %s: data built from %s, %d table(s), %d rows, %.2fs",
         session_id, source, len(result.tables), sum(t.row_count for t in result.tables), elapsed,

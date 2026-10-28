@@ -162,30 +162,31 @@ Every phase ends with the following (CLAUDE.md):
 
 **Prerequisites:** the prebuilt bundle `benchmark/lakequest_prepared/bank_sample/` exists (git-ignored; see the LakeQuest `prepare` command in the README), the Gemini API key is set, and Phase 8.3 is done (the classifier and its LakeQuest prompt are on in `lakequest_bank.yaml`).
 
-- [ ] **Run** (overrides only, no new config): `uv run python -m evals configs/eval/lakequest_bank.yaml agent.latency_trace=true eval.repeats=3 name=lat_lakequest`.
+- [x] **Run** (overrides only, no new config): `uv run python -m evals configs/eval/lakequest_bank.yaml agent.latency_trace=true eval.repeats=3 name=lat_lakequest`.
   - 40 cases × 3 = 120 turns, about 470 model calls (350 agent + 120 classifier) and 10 minutes.
   - The classifier is on (Phase 8.3) and the agent follows its label, so the `intent` stage is a real part of each turn.
   - The prebuilt bundle means there is no `data_build` or `docs_build` stage; that is expected.
   - Check 0 errors and `timing.ok` true on every row.
-- [ ] **Route summary and routing accuracy** (from `results.jsonl`, by tag `hybrid`, `table`, `document`, plus all): `Route | n | p50 latency | max latency | avg tool calls`.
+- [x] **Route summary and routing accuracy** (from `results.jsonl`, by tag `hybrid`, `table`, `document`, plus all): `Route | n | p50 latency | max latency | avg tool calls`.
   - Latency is `latency_s` in seconds, and `n` counts turns (cases × 3). Add a `p50 w/o intent` column (`latency_s` minus the `intent` stage), which is comparable with the earlier LakeQuest figures.
   - Add the `llm`, `tool` and `intent` stage p50 (s) per route from `timing`, to show where each route spends its time.
   - **Routing accuracy:** compare each row's `intent` with its tag (`table` → `database`, `document` → `document`, `hybrid` → `hybrid`). Print the overall accuracy and a 3×3 confusion table (tag × predicted intent, counts). Next to it, show `tool_sequence_match` from `metrics.json`, the agent's actual tool routing, and the same metric from the earlier intent-off run (`runs/20261026-133728_lakequest_bank_sample`).
   - This scores the LakeQuest prompt (Phase 8.3) with the agent following its label. The case tags are used only here, to score; they never reach the classifier or the agent.
-- [ ] **Dense retrieval** (offline: no model call, no embedding call). For each recorded `search_documents` call in `results.jsonl` (`query`, `source`, `section`, `top_k`):
+- [x] **Dense retrieval** (offline: no model call, no embedding call). For each recorded `search_documents` call in `results.jsonl` (`query`, `source`, `section`, `top_k`):
   - Call `retrieval.search` on the bundle's `docs.db` with the run's retrieval settings and one fixed random unit vector as `query_vec` (the scan cost does not depend on its values). Time it with `time.monotonic()`, median of 3, in milliseconds.
   - Report `Chunks scanned | calls | search ms (median / max)`, grouped by chunks scanned (for example ≤ 50, 51–500, > 500). Chunks scanned is `SearchResult.candidates`.
   - Verify with `retrieval._dense` and `prepare.json` (2,481 chunks) whether every call scans all chunks, or only those matching a `source` / `section` filter.
   - Compare with the traced `tool` stage of single-call `search_documents` batches to get the search's share of the tool time (the rest is the query embedding and overhead).
-- [ ] **SQL execution.** For each `run_sql` call, find the tables read (`FROM` / `JOIN` in the query) and their row and column counts in `bank.db`, and tag the query `lookup` (no join, no aggregate), `join`, or `aggregate` (`COUNT`, `SUM`, `AVG`, `MIN`, `MAX`, `GROUP BY`).
+- [x] **SQL execution.** For each `run_sql` call, find the tables read (`FROM` / `JOIN` in the query) and their row and column counts in `bank.db`, and tag the query `lookup` (no join, no aggregate), `join`, or `aggregate` (`COUNT`, `SUM`, `AVG`, `MIN`, `MAX`, `GROUP BY`).
   - Time each query directly on `bank.db` (read-only, median of 3, milliseconds), and note the traced `tool` stage for single-call `run_sql` batches.
   - Report `Largest table (rows × cols) | class | calls | SQL ms (median / max) | traced tool ms (median)`. Merge groups with fewer than 3 calls and say so.
-- [ ] **Report:** `dev_docs/design/latency_report_lakequest.md`, concise.
+- [x] **Report:** `dev_docs/design/latency_report_lakequest.md`, concise.
   - State the units (route latency in seconds; search and SQL in milliseconds) and the sample counts (turns, calls per group).
   - Include the tables above (route summary, routing confusion, dense retrieval, SQL) and 3–4 bullets naming the main bottlenecks: which stage dominates each route, what the classifier costs (`intent` stage p50 / max and its share of a turn) and how it routes (accuracy, the confusion table, and the change in `tool_sequence_match` against the intent-off run), whether the dense scan matters at 2,481 chunks, whether large-table SQL matters. Name fix candidates; do not implement them.
   - End with one caveat line: internal 40-case sample, 3 repeats, descriptive only.
-- [ ] **Tests:** no production code changes, so no new tests; confirm `uv run pytest` passes.
-- [ ] **Dev script** `phase_8_4.py` (read-only, no model or network calls): takes a run folder (default: the newest `*_lat_lakequest`) and prints the four tables. Keep the helpers inline and short.
+- [x] **Tests:** no production code changes, so no new tests; confirm `uv run pytest` passes.
+- [x] **Follow-up (found in this phase):** `time.monotonic()` ticks every ~15.6 ms on Windows and rounded short traced stages to 0, so the tracing timers (`ask_async`, the setup steps, retrieval mode) now use `time.perf_counter()`. Three tests pin the clock; the SQL timeout deadline is unchanged.
+- [x] **Dev script** `phase_8_4.py` (read-only, no model or network calls): takes a run folder (default: the newest `*_lat_lakequest`) and prints the four tables. Keep the helpers inline and short.
 
 ---
 

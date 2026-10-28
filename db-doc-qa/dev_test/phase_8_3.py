@@ -23,9 +23,9 @@ print(f"{'expected':<10}{'default (shipments) prompt':<30}lakequest prompt")
 for expected, question in QUESTIONS.items():
     cells = []
     for prompt in (None, lake_prompt):  # None = the built-in prompt
-        started = time.monotonic()
+        started = time.perf_counter()
         result = intent.classify(question, state.get("schema_summary"), state.get("docs_summary"), prompt=prompt)
-        cells.append(f"{result.intent:<10}{time.monotonic() - started:4.2f}s")
+        cells.append(f"{result.intent:<10}{time.perf_counter() - started:4.2f}s")
     print(f"{expected:<10}{cells[0]:<30}{cells[1]}")
 
 dataset = BUNDLE / "dataset.yaml"

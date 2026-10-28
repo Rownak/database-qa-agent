@@ -9,6 +9,8 @@ from google.adk.events import Event
 from google.adk.events.event_actions import EventActions
 from google.genai import types
 
+import evals.run as eval_run
+from data_agent import agent as agent_module
 from data_agent import intent, runner
 from data_agent.agent import make_ensure_data
 from data_agent.config import AgentConfig, load_config
@@ -288,3 +290,43 @@ def test_retrieval_mode_traces_only_the_steps_that_ran(tmp_path, fake_embed):
     hybrid = first_timing("hyb", "agent.latency_trace=true", "agent.retrieval.mode=hybrid")
     assert _names(hybrid) == ["query_embedding", "search"]
     assert first_timing("off") is None
+
+
+# --- the trace uses the high-resolution clock (perf_counter), not monotonic (15.6 ms tick on Windows) ---
+
+
+def _clock(*values):
+    """A stand-in for the ``time`` module of one file: ``perf_counter()`` returns the given values in order."""
+    it = iter(values)
+    return SimpleNamespace(perf_counter=lambda: next(it))
+
+
+def test_the_session_times_turns_and_events_with_perf_counter(patched, monkeypatch):
+    patched.events = [_call_event(), _event(types.Part(text="done"))]
+    # started, the arrival of each of the two events, then the end of the turn
+    monkeypatch.setattr(runner, "time", _clock(0.0, 0.25, 0.5, 1.0))
+    result = AgentSession(AgentConfig(latency_trace=True), {}).ask("q")
+    assert result.error is None and result.latency_s == 1.0
+    assert [s["s"] for s in result.timing["stages"]] == [0.25, 0.25] and result.timing["other_s"] == 0.5
+
+
+def test_the_setup_steps_are_timed_with_perf_counter(root, monkeypatch):
+    # two readings per step: data build, document build, intent
+    monkeypatch.setattr(agent_module, "time", _clock(0.0, 0.5, 1.0, 3.0, 3.0, 3.25))
+    monkeypatch.setattr(intent, "classify", lambda *a, **k: intent.IntentResult(intent="database", reason="r"))
+    ctx = _ctx()
+    ctx.user_content = SimpleNamespace(parts=[SimpleNamespace(text="q")])
+    make_ensure_data(AgentConfig(latency_trace=True))(ctx)
+    assert ctx.state["turn_timing"] == [
+        {"stage": "data_build", "s": 0.5}, {"stage": "docs_build", "s": 2.0}, {"stage": "intent", "s": 0.25},
+    ]
+
+
+def test_retrieval_mode_is_timed_with_perf_counter(tmp_path, fake_embed, monkeypatch):
+    from tests.test_eval_retrieval import config, dataset
+
+    monkeypatch.setattr(eval_run, "time", _clock(0.0, 0.1, 0.35, 0.5))  # started, search start, search end, end
+    run_eval(config(tmp_path, dataset(tmp_path, "3.2"), "agent.latency_trace=true"), tmp_path / "run")
+    timing = json.loads((tmp_path / "run" / "results.jsonl").read_text().splitlines()[0])["timing"]
+    assert [(s["stage"], s["s"]) for s in timing["stages"]] == [("search", 0.25)]
+    assert timing["other_s"] == 0.25 and timing["query_s"] == 0.5

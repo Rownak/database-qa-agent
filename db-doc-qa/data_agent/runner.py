@@ -116,7 +116,9 @@ class AgentSession:
         events: list[dict] = []
         arrivals: list[float] = []  # seconds since the start at which each event arrived (latency_trace only)
         trace = self.cfg.latency_trace
-        started = time.monotonic()
+        # perf_counter, not monotonic: on Windows monotonic ticks every ~15.6 ms and would round
+        # short stages (a SQL call, a search) to 0 in the trace.
+        started = time.perf_counter()
         error: str | None = None
         intent_from_state: str | None = None
         setup: list[dict] | None = None
@@ -125,7 +127,7 @@ class AgentSession:
                 # The same JSON shape the API server sends, so one parser serves both paths.
                 events.append(ev.model_dump(mode="json", by_alias=True, exclude_none=True))
                 if trace:
-                    arrivals.append(time.monotonic() - started)
+                    arrivals.append(time.perf_counter() - started)
             if trace:
                 setup = _state_delta_value(events, "turn_timing")
             need_intent = not any("intent" in ((e.get("actions") or {}).get("stateDelta") or {}) for e in events)
@@ -141,7 +143,7 @@ class AgentSession:
                     setup = session.state.get("turn_timing") if session is not None else None
         except Exception as exc:
             error = f"{type(exc).__name__}: {exc}"
-        parsed = parse_events(events, time.monotonic() - started)
+        parsed = parse_events(events, time.perf_counter() - started)
         timing = turn_timing(events, arrivals, setup or [], parsed.latency_s) if trace else None
         return TurnResult(
             parsed.answer, parsed.calls, parsed.intent or intent_from_state, parsed.latency_s, error, timing
