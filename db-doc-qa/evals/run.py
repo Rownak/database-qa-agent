@@ -19,7 +19,7 @@ import numpy as np
 
 from data_agent import doc_ingest, retrieval
 from data_agent.config import RunConfig
-from data_agent.events import TurnResult
+from data_agent.events import TurnResult, summarize_stages
 from data_agent.ingest import SAMPLE_DOCS_DIR
 from data_agent.runner import AgentSession, files_state
 from evals import report
@@ -113,7 +113,7 @@ def _ask(session_factory: Callable, cfg: RunConfig, state: dict, question: str, 
 
 def _row(case: EvalCase, repeat: int, result: TurnResult, names: list[str]) -> dict:
     """One line of ``results.jsonl``: the turn and its scores."""
-    return {
+    row = {
         "id": case.id,
         "repeat": repeat,
         "tags": case.tags,
@@ -126,6 +126,9 @@ def _row(case: EvalCase, repeat: int, result: TurnResult, names: list[str]) -> d
         "latency_s": round(result.latency_s, 3),
         "error": result.error,
     }
+    if result.timing is not None:  # only with agent.latency_trace; otherwise the row keeps its old keys
+        row["timing"] = result.timing
+    return row
 
 
 def _retrieve(db_path: Path, question: str, cfg: RunConfig) -> TurnResult:
@@ -134,23 +137,34 @@ def _retrieve(db_path: Path, question: str, cfg: RunConfig) -> TurnResult:
     The hits are shaped like the tool's passages, so the same metrics apply in both
     modes. A failure becomes ``TurnResult.error``.
     """
-    started = time.monotonic()
+    started = time.perf_counter()  # same clock as the agent trace (see AgentSession.ask_async)
     rcfg = cfg.agent.retrieval
+    stages: list[dict] = []  # with latency_trace: the steps that ran (no embedding with bm25)
     try:
         vec = None
         if rcfg.mode != "bm25":  # BM25-only retrieval needs no query embedding
             vec = doc_ingest.embed([question], "RETRIEVAL_QUERY", **doc_ingest.embed_options(cfg.agent.embedding))
+            stages.append({"stage": "query_embedding", "s": time.perf_counter() - started})
+        mark = time.perf_counter()
         found = retrieval.search(
             db_path, question, top_k=rcfg.max_top_k, query_vec=None if vec is None else vec[0], cfg=rcfg
         )
+        stages.append({"stage": "search", "s": time.perf_counter() - mark})
         passages = [
             {"source": h.source, "section_number": h.section_number, "section_path": h.section_path, "matched_by": h.matched_by}
             for h in found.hits
         ]
         calls = [{"name": "search_documents", "args": {"query": question}, "response": {"passages": passages}}]
-        return TurnResult("", calls, None, time.monotonic() - started)
+        latency = time.perf_counter() - started
+        return TurnResult("", calls, None, latency, None, _trace(cfg, stages, latency))
     except Exception as exc:
-        return TurnResult("", [], None, time.monotonic() - started, f"{type(exc).__name__}: {exc}")
+        latency = time.perf_counter() - started
+        return TurnResult("", [], None, latency, f"{type(exc).__name__}: {exc}", _trace(cfg, stages, latency))
+
+
+def _trace(cfg: RunConfig, stages: list[dict], latency_s: float) -> dict | None:
+    """Closes the retrieval stages into a trace, or returns ``None`` when ``agent.latency_trace`` is off."""
+    return summarize_stages(stages, latency_s) if cfg.agent.latency_trace else None
 
 
 def _run_retrieval(cfg: RunConfig, cases: list[EvalCase], docs: list[Path] | None, names: list[str]) -> list[dict]:
@@ -170,28 +184,89 @@ def _run_retrieval(cfg: RunConfig, cases: list[EvalCase], docs: list[Path] | Non
     return rows
 
 
+def _pcts(values: list[float]) -> dict:
+    """``p50_s`` / ``p95_s`` / ``max_s`` of a non-empty list."""
+    return {
+        "p50_s": float(np.percentile(values, 50)),
+        "p95_s": float(np.percentile(values, 95)),
+        "max_s": float(max(values)),
+    }
+
+
+def _latency_stages(rows: list[dict]) -> dict | None:
+    """Per-stage latency over the rows that carry a usable trace, or ``None`` when there are none.
+
+    A row counts when it has a ``timing`` with ``ok`` true and no error (as for ``latency_p50_s``).
+    A stage that ran several times in one turn is summed for that turn, and the percentiles are
+    taken over the turns that had the stage, so a stage that rarely runs is not diluted by zeros.
+
+    Returns:
+        ``{"n", "query_p50_s", "query_p95_s", "in_tok_mean", "out_tok_mean", "stages": {name:
+        {"turns", "calls_per_turn", "p50_s", "p95_s", "max_s"}}}``. ``other`` is the residual.
+        The token means appear only when the events carried token counts.
+    """
+    traced = [r["timing"] for r in rows if r.get("timing") and r["timing"]["ok"] and not r["error"]]
+    if not traced:
+        return None
+    per_stage: dict[str, list[tuple[float, int]]] = {}  # name -> [(seconds summed in a turn, entries in it)]
+    for t in traced:
+        sums: dict[str, list] = {}
+        for st in t["stages"]:
+            acc = sums.setdefault(st["stage"], [0.0, 0])
+            acc[0] += st["s"]
+            acc[1] += 1
+        sums["other"] = [t["other_s"], 1]
+        for name, (seconds, count) in sums.items():
+            per_stage.setdefault(name, []).append((seconds, count))
+    out: dict = {"n": len(traced)}
+    queries = [t["query_s"] for t in traced]
+    out["query_p50_s"], out["query_p95_s"] = float(np.percentile(queries, 50)), float(np.percentile(queries, 95))
+    for key in ("in_tok", "out_tok"):
+        totals = [sum(st.get(key, 0) for st in t["stages"]) for t in traced if any(key in st for st in t["stages"])]
+        if totals:
+            out[f"{key}_mean"] = sum(totals) / len(totals)
+    out["stages"] = {
+        name: {"turns": len(v), "calls_per_turn": sum(c for _, c in v) / len(v), **_pcts([x for x, _ in v])}
+        for name, v in per_stage.items()
+    }
+    return out
+
+
 def _aggregate(rows: list[dict], names: list[str]) -> dict:
-    """Mean per metric over the rows where it applies, plus counts and latency percentiles."""
+    """Mean per metric over the rows where it applies, plus counts and latency percentiles.
+
+    ``latency_stages`` (see :func:`_latency_stages`) is added only when the rows carry traces.
+    """
     metrics: dict[str, float | None] = {}
     for name in names:
         values = [r["metrics"][name] for r in rows if r["metrics"].get(name) is not None]
         metrics[name] = sum(values) / len(values) if values else None
     latencies = [r["latency_s"] for r in rows if not r["error"]]
-    return {
+    agg = {
         "n": len(rows),
         "errors": sum(1 for r in rows if r["error"]),
         "latency_p50_s": float(np.percentile(latencies, 50)) if latencies else None,
         "latency_p95_s": float(np.percentile(latencies, 95)) if latencies else None,
         "metrics": metrics,
     }
+    stages = _latency_stages(rows)
+    if stages is not None:
+        agg["latency_stages"] = stages
+    return agg
 
 
 def _by_tag(rows: list[dict], names: list[str]) -> dict[str, dict]:
-    """Means per case tag (for example ``hybrid`` / ``table`` / ``document``): ``{tag: {"n", "metrics"}}``."""
+    """Means per case tag (for example ``hybrid`` / ``table`` / ``document``): ``{tag: {"n", "metrics"}}``.
+
+    With traces in the rows, each tag also gets ``latency_p50_s`` / ``latency_p95_s``.
+    """
+    traced = any("timing" in r for r in rows)
     out = {}
     for tag in sorted({t for r in rows for t in r["tags"]}):
         agg = _aggregate([r for r in rows if tag in r["tags"]], names)
         out[tag] = {"n": agg["n"], "metrics": agg["metrics"]}
+        if traced:
+            out[tag]["latency_p50_s"], out[tag]["latency_p95_s"] = agg["latency_p50_s"], agg["latency_p95_s"]
     return out
 
 

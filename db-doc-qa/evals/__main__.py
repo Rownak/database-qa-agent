@@ -22,9 +22,15 @@ def format_summary(metrics: dict) -> str:
     p50, p95 = metrics["latency_p50_s"], metrics["latency_p95_s"]
     if p50 is not None:
         lines.append(f"  latency p50 {p50:.1f}s  p95 {p95:.1f}s")
+    stages = metrics.get("latency_stages")
+    if stages:
+        shown = "  ".join(f"{name} {st['p50_s']:.2f}s" for name, st in stages["stages"].items())
+        lines.append(f"  stage p50  {shown}  (query p50 {stages['query_p50_s']:.1f}s p95 {stages['query_p95_s']:.1f}s)")
     for tag, part in metrics.get("by_tag", {}).items():
         values = "  ".join(f"{n}={v:.2f}" for n, v in part["metrics"].items() if v is not None)
-        lines.append(f"  [{tag}] n={part['n']}  {values}")
+        has_latency = part.get("latency_p50_s") is not None
+        latency = f"  latency p50 {part['latency_p50_s']:.1f}s p95 {part['latency_p95_s']:.1f}s" if has_latency else ""
+        lines.append(f"  [{tag}] n={part['n']}  {values}{latency}")
     return "\n".join(lines)
 
 

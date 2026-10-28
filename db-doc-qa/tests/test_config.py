@@ -151,3 +151,12 @@ def test_embedding_provider_defaults_to_gemini_and_accepts_only_known_values():
     assert EmbeddingConfig(provider="ollama", model="nomic-embed-text:latest").provider == "ollama"
     with pytest.raises(ValidationError):
         EmbeddingConfig(provider="openai")
+
+
+def test_latency_shipments_config_loads_with_tracing_on_and_the_smoke_thresholds():
+    cfg = config.load_config("configs/eval/latency_shipments.yaml")
+    smoke = config.load_config("configs/eval/smoke.yaml")
+    assert cfg.agent.latency_trace is True and cfg.eval.repeats == 5 and cfg.name == "latency_shipments"
+    assert cfg.eval.fail_under == smoke.eval.fail_under and cfg.dataset == smoke.dataset
+    # tracing is the only difference in the agent settings, so the quality results stay comparable
+    assert cfg.agent.model_copy(update={"latency_trace": False}) == smoke.agent
