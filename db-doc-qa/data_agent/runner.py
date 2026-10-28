@@ -25,7 +25,7 @@ from google.genai import types
 from data_agent import sessions
 from data_agent.agent import build_agent
 from data_agent.config import AgentConfig
-from data_agent.events import TurnResult, parse_events
+from data_agent.events import TurnResult, parse_events, turn_timing
 
 APP_NAME = "sheet_qa"
 USER_ID = "user"
@@ -54,6 +54,16 @@ def files_state(tables: list[Path] | None, docs: list[Path] | None) -> dict:
             {"name": Path(p).name, "b64": base64.b64encode(Path(p).read_bytes()).decode()} for p in docs
         ]
     return state
+
+
+def _state_delta_value(events: list[dict], key: str):
+    """Returns the last ``stateDelta[key]`` found in the events, or ``None`` if no event set it."""
+    value = None
+    for event in events:
+        delta = (event.get("actions") or {}).get("stateDelta") or {}
+        if key in delta:
+            value = delta[key]
+    return value
 
 
 class AgentSession:
@@ -104,25 +114,37 @@ class AgentSession:
         """
         message = types.Content(role="user", parts=[types.Part(text=question)])
         events: list[dict] = []
+        arrivals: list[float] = []  # seconds since the start at which each event arrived (latency_trace only)
+        trace = self.cfg.latency_trace
         started = time.monotonic()
         error: str | None = None
         intent_from_state: str | None = None
+        setup: list[dict] | None = None
         try:
             async for ev in self.runner.run_async(user_id=USER_ID, session_id=self.session_id, new_message=message):
                 # The same JSON shape the API server sends, so one parser serves both paths.
                 events.append(ev.model_dump(mode="json", by_alias=True, exclude_none=True))
-            if not any("intent" in ((e.get("actions") or {}).get("stateDelta") or {}) for e in events):
-                # No state delta carried the intent: read it from the session state instead.
+                if trace:
+                    arrivals.append(time.monotonic() - started)
+            if trace:
+                setup = _state_delta_value(events, "turn_timing")
+            need_intent = not any("intent" in ((e.get("actions") or {}).get("stateDelta") or {}) for e in events)
+            if need_intent or (trace and setup is None):
+                # No state delta carried the value: read it from the session state instead.
                 session = await self.adk.get_session(
                     app_name=APP_NAME, user_id=USER_ID, session_id=self.session_id
                 )
-                value = session.state.get("intent") if session is not None else None
-                intent_from_state = value if isinstance(value, str) else None
+                if need_intent:
+                    value = session.state.get("intent") if session is not None else None
+                    intent_from_state = value if isinstance(value, str) else None
+                if trace and setup is None:
+                    setup = session.state.get("turn_timing") if session is not None else None
         except Exception as exc:
             error = f"{type(exc).__name__}: {exc}"
         parsed = parse_events(events, time.monotonic() - started)
+        timing = turn_timing(events, arrivals, setup or [], parsed.latency_s) if trace else None
         return TurnResult(
-            parsed.answer, parsed.calls, parsed.intent or intent_from_state, parsed.latency_s, error
+            parsed.answer, parsed.calls, parsed.intent or intent_from_state, parsed.latency_s, error, timing
         )
 
     def close(self, delete_files: bool = True) -> None:

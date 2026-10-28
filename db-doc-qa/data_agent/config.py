@@ -129,6 +129,9 @@ class AgentConfig(BaseModel):
             replaces the instruction of ``profile``; the description stays the profile's. It
             uses the same state placeholders (``{schema_summary}``, ``{docs_summary}``,
             ``{load_error?}``). ``None`` keeps the built-in instruction.
+        latency_trace: Diagnostic flag; it never changes an answer. When true, each turn records
+            the duration of the stages that ran (session setup, intent, model calls, tools) in
+            ``TurnResult.timing``. Off by default, and then nothing is recorded or read.
     """
 
     model_config = _FROZEN
@@ -137,6 +140,7 @@ class AgentConfig(BaseModel):
     instruction_file: Path | None = None
     model: ModelConfig = Field(default_factory=ModelConfig)
     intent_enabled: bool = True  # False skips classification (ablation)
+    latency_trace: bool = False
     embedding: EmbeddingConfig = Field(default_factory=EmbeddingConfig)
     chunking: ChunkingConfig = Field(default_factory=ChunkingConfig)
     retrieval: RetrievalConfig = Field(default_factory=RetrievalConfig)

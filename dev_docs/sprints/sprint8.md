@@ -44,14 +44,14 @@ Every phase ends with the following (CLAUDE.md):
 
 **Goal:** with `agent.latency_trace=true`, every `results.jsonl` row carries a `timing` object holding the stages that ran in that turn, and `metrics.json` carries per-stage and per-tag latency percentiles. With the flag off, nothing changes.
 
-- [ ] **Config flag** (`data_agent/config.py`):
+- [x] **Config flag** (`data_agent/config.py`):
   - Add `AgentConfig.latency_trace: bool = False`.
   - Update the class docstring: it is a diagnostic flag and does not change the answer.
-- [ ] **Setup stages** (`data_agent/agent.py`):
+- [x] **Setup stages** (`data_agent/agent.py`):
   - When the flag is on, `_ensure_data` writes `state["turn_timing"]` each turn: a list of `{"stage", "s"}` entries.
   - Include only the steps that ran: `data_build` and `docs_build` (from the existing timers) and `intent` (a new timer around `intent.classify`).
   - The value is overwritten each turn, never appended to.
-- [ ] **Turn trace** (`data_agent/events.py`, `data_agent/runner.py`):
+- [x] **Turn trace** (`data_agent/events.py`, `data_agent/runner.py`):
   - **Result field:** add `timing: dict | None = None` as the **last** field of `TurnResult`, so the positional constructions keep working.
   - **Derivation:** add a pure function `turn_timing(events, arrivals, setup, latency_s) -> dict`, with no ADK import. It returns `{"stages": [...], "other_s", "query_s", "ok"}`:
     - `llm` entries come from gaps between event arrivals; the first one has the setup stages subtracted. Each carries `in_tok`/`out_tok` from `usageMetadata` when present.
@@ -59,8 +59,8 @@ Every phase ends with the following (CLAUDE.md):
     - `query_s` is `latency_s` minus `data_build` and `docs_build`.
     - Events up to an error are kept; the rest of the time goes to `other`.
   - **Runner:** when the flag is on, `ask_async` records the arrival offset of each event and reads `turn_timing` with the existing `get_session` call. It then fills `timing`; with the flag off it does none of this.
-- [ ] **Retrieval mode** (`evals/run.py` `_retrieve`): when the flag is on, record `query_embedding` (only when `mode != "bm25"`) and `search` as stages. This is the no-LLM partial pipeline.
-- [ ] **Aggregation** (`evals/run.py`, `evals/__main__.py`):
+- [x] **Retrieval mode** (`evals/run.py` `_retrieve`): when the flag is on, record `query_embedding` (only when `mode != "bm25"`) and `search` as stages. This is the no-LLM partial pipeline.
+- [x] **Aggregation** (`evals/run.py`, `evals/__main__.py`):
   - `_row` adds `"timing"` only when `result.timing` is not `None`.
   - When any row has a trace (and `ok` is true), `_aggregate` adds `latency_stages`. For each stage name it holds:
     - `turns`: how many turns had the stage
@@ -69,12 +69,12 @@ Every phase ends with the following (CLAUDE.md):
     - plus `query_p50_s`/`query_p95_s` and the mean `in_tok`/`out_tok`
   - `_by_tag` adds `latency_p50_s`/`latency_p95_s` per tag only when traces exist.
   - `format_summary` prints one stage line and the per-tag latency when `latency_stages` is present.
-- [ ] **Design doc:** update `latency_evaluation_design.md` §3–§4:
+- [x] **Design doc:** update `latency_evaluation_design.md` §3–§4:
   - the flag
   - "skipped stages are absent, not 0"
   - the list form of `stages`
   - the residual and `ok` rule
-- [ ] **Tests:**
+- [x] **Tests:**
   - `tests/test_events.py` (`turn_timing` on canned events with arrival offsets):
     - sequential `run_sql` then `search_documents`
     - two calls in one model event (one tool entry)
@@ -91,10 +91,10 @@ Every phase ends with the following (CLAUDE.md):
     - rows without it produce today's keys exactly
     - retrieval mode with `bm25` has no `query_embedding` stage
   - `test_config`, `test_runner`, `test_app*` and the other suites pass unchanged.
-- [ ] **Compatibility check:**
+- [x] **Compatibility check:**
   - `uv run python -m evals configs/eval/smoke.yaml dataset.limit=1` gives the same file keys as before.
   - The same command with `agent.latency_trace=true` adds `timing` and `latency_stages`, and nothing else changes.
-- [ ] **Dev script** `phase_8_1.py`: run one live question (`hybrid_delayed_express`) through `AgentSession` with the flag on, and print the stage list, `other_s` and `ok`.
+- [x] **Dev script** `phase_8_1.py`: run one live question (`hybrid_delayed_express`) through `AgentSession` with the flag on, and print the stage list, `other_s` and `ok`.
 
 ## Phase 8.2 — shipments_v1 Baseline, Experiments and Report
 

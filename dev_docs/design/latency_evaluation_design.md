@@ -41,14 +41,24 @@ another**, except tool calls that the model emits together in one response.
 Because the stages run one after another, a flat list of stages is enough. A span tree,
 parent/child IDs and interval unions are not needed.
 
-| Stage | How it is measured | Notes |
+**Opt-in, and only what ran.** Tracing is switched on with `agent.latency_trace: true`
+(default `false`; set it in the YAML or with `agent.latency_trace=true`). With the flag off,
+nothing is recorded or read and the result files keep their old keys. With it on, `timing` is
+a **list of the stages that actually ran**. A skipped stage has no entry; it is never written
+as `0`. This keeps the trace valid for any dataset and for partial pipelines (a prebuilt
+bundle has no build stages, `intent_enabled=false` has no `intent`, a refusal has no `tool`,
+BM25 has no `query_embedding`).
+
+| Stage | How it is measured | Present when |
 |---|---|---|
-| `setup.data_s` | Timer that already exists in `_build_session_data` | 0 when `data.db` exists (prebuilt bundle or a later turn) |
-| `setup.docs_s` | Timer that already exists in `_build_session_docs` | Includes chunk embedding; 0 when prebuilt |
-| `intent_s` | New timer around `intent.classify` | 0 when `intent_enabled=false` |
-| `llm_s[i]` | Gap between event arrivals (below) | One entry per agent LLM call, with its tokens |
-| `tool_s[i]` | Gap between the `functionCall` event and its `functionResponse` event | Tool calls emitted together are one "tool batch" entry |
-| `other_s` | `latency_s` minus the sum of the stages above | Sweep, ADK overhead, state reads; it should stay small |
+| `data_build` | Timer that already exists in `_build_session_data` | `data.db` was built this turn (not with a prebuilt bundle or on a later turn) |
+| `docs_build` | Timer that already exists in `_build_session_docs` | `docs.db` was built this turn; includes chunk embedding |
+| `intent` | New timer around `intent.classify` | `intent_enabled` is true |
+| `llm` | Gap between event arrivals (below); carries `in_tok` / `out_tok` | Once per agent model call |
+| `tool` | From the previous event to the `functionResponse` event; carries `names` | Once per tool batch (calls emitted together are one entry) |
+| `other` | `latency_s` minus the stages above (the residual) | Always; sweep, ADK overhead, state reads. It should stay small |
+
+In `eval.mode: retrieval` the stages are `query_embedding` (absent with `bm25`) and `search`.
 
 **Derivation from event arrival times.** In `ask_async`, record `time.monotonic() - started`
 as each event is yielded. The runner does not stream, so a model event arrives when its LLM
@@ -62,13 +72,16 @@ start ─ setup + intent + LLM#1 ─▶ [model: functionCall run_sql]
       ─ LLM#3 ──────────────────▶ [model: final text] ─ other ─▶ end
 ```
 
-`LLM#1 = first model event arrival − (setup.data_s + setup.docs_s + intent_s)`. The arrival
-time we record is used rather than ADK's `Event.timestamp`, because ADK sets that field
-inside its own flow and its exact meaning is not part of a stable contract.
+`LLM#1 = first model event arrival − (the setup stages that ran)`. Events without content
+(state deltas) and partial streaming chunks are skipped, so their time falls into the next
+stage. The arrival time we record is used rather than ADK's `Event.timestamp`, because ADK
+sets that field inside its own flow and its exact meaning is not part of a stable contract.
 
-**Sanity check:** for every row, the stages must add up to `latency_s` within a few
-milliseconds. If that fails (for example, an ADK version change emits extra events), the
-row is marked `timing_ok: false` rather than reporting misleading stage numbers.
+**No double-counting.** The top-level stages do not overlap, so `sum(stages) + other = latency_s`
+by construction. Nested detail (for example the query embedding inside `search_documents`) is
+not recorded. If the residual is negative beyond a 10 ms tolerance, the stages overlapped
+(for example, an ADK version change emits events differently); the row is marked `ok: false`
+and is left out of the stage percentiles rather than reporting misleading numbers.
 
 **Cold and warm turns.** There are three populations. Each is reported separately and never
 mixed into one percentile:
@@ -76,7 +89,7 @@ mixed into one percentile:
 | Label | Meaning | How it is obtained |
 |---|---|---|
 | `ingest_inclusive` | Today's `latency_s` for a `files_state` dataset | As is |
-| `query` | Turn latency without ingestion: `latency_s − setup.data_s − setup.docs_s` | Derived; no new run mode |
+| `query` | Turn latency without ingestion: `latency_s − data_build − docs_build` (`query_s`) | Derived; no new run mode |
 | `first_turn` | The first row of a run (imports, first HTTPS connection, provider warm-up) | Row index 0, reported on its own |
 
 Subtracting setup gives the warm-query number without changing how the runner builds
@@ -85,36 +98,43 @@ number turns out to differ from prebuilt-bundle runs.
 
 ## 4. Minimal code changes
 
-There are four small edits, and every one is backward compatible:
+There are a few small edits, and every one is backward compatible (Sprint 8, Phase 8.1):
 
-| # | File | Change | Size |
-|---|---|---|---|
-| 1 | `data_agent/agent.py` | `_ensure_data` writes `state["turn_timing"] = {"data_s", "docs_s", "intent_s"}` each turn, reusing the two existing timers and adding one around `_classify_turn` | ~10 lines |
-| 2 | `data_agent/events.py` + `runner.py` | Add `timing: dict = field(default_factory=dict)` as the **last** field of `TurnResult`, so the existing positional constructions keep working. Add a pure function `turn_timing(events, arrivals, setup, latency_s) -> dict` in `events.py` (no ADK import, so the UI image is unaffected). `ask_async` records arrivals, reads `turn_timing` from the session state (the same `get_session` call already used for the intent fallback), and calls it | ~50 lines |
-| 3 | `evals/run.py` | `_row` adds `"timing": result.timing`. `_aggregate` adds `latency_stages` (p50/p95/max per stage, plus `query_p50_s`/`query_p95_s`, `llm_calls`, `tool_calls` and token means). `_by_tag` adds latency p50/p95 per tag (route) | ~30 lines |
-| 4 | `evals/__main__.py` | `format_summary` prints one stage line and route latency | ~8 lines |
+| # | File | Change |
+|---|---|---|
+| 0 | `data_agent/config.py` | `AgentConfig.latency_trace: bool = False`. It is a diagnostic flag and does not change an answer |
+| 1 | `data_agent/agent.py` | With the flag on, `_ensure_data` writes `state["turn_timing"] = [{"stage", "s"}]` each turn, for the steps that ran. The two existing timers are returned by `_build_session_data` / `_build_session_docs` (`None` if nothing was built), and one timer is added around `intent.classify` |
+| 2 | `data_agent/events.py` + `runner.py` | `TurnResult.timing: dict | None = None` is the **last** field, so the positional constructions keep working. Pure functions `turn_timing(events, arrivals, setup, latency_s)` and `summarize_stages(stages, latency_s)` in `events.py` (no ADK import, so the UI image is unaffected). With the flag on, `ask_async` records arrivals and reads `turn_timing` from the events' `stateDelta`, falling back to the session state; with it off, it does neither |
+| 3 | `evals/run.py` | `_row` adds `"timing"` only when present. `_aggregate` adds `latency_stages` only when usable traces exist. `_by_tag` adds latency p50/p95 per tag only then. Retrieval mode records `query_embedding` / `search` |
+| 4 | `evals/__main__.py` | `format_summary` prints one stage line and the per-tag latency when present |
 
-**Not changed:** `RunConfig` / YAML schema, the run folder layout, `report.write_run`,
-metrics, tools, retrieval and the app. No `traces.jsonl` file is added: one turn is already
-one `results.jsonl` row, and its `timing` object holds the breakdown.
+**Not changed:** the YAML schema beyond the one flag, the run folder layout,
+`report.write_run`, metrics, tools, retrieval and the app. No `traces.jsonl` file is added:
+one turn is already one `results.jsonl` row, and its `timing` object holds the breakdown.
 
-**`results.jsonl` row (new key only):**
+**`results.jsonl` row (new key only, flag on):**
 
 ```json
 "timing": {
-  "data_s": 0.04, "docs_s": 1.92, "intent_s": 0.61,
-  "llm": [{"s": 0.83, "in_tok": 2140, "out_tok": 31, "next": "run_sql"},
-          {"s": 0.77, "in_tok": 2390, "out_tok": 28, "next": "search_documents"},
-          {"s": 1.10, "in_tok": 3870, "out_tok": 212, "next": "answer"}],
-  "tools": [{"s": 0.02, "names": ["run_sql"]}, {"s": 0.35, "names": ["search_documents"]}],
-  "other_s": 0.03, "query_s": 3.71, "timing_ok": true
+  "stages": [{"stage": "data_build", "s": 0.016}, {"stage": "docs_build", "s": 0.719},
+             {"stage": "intent", "s": 0.843},
+             {"stage": "llm", "s": 1.313, "in_tok": 2024, "out_tok": 35},
+             {"stage": "tool", "s": 0.0, "names": ["run_sql"]},
+             {"stage": "llm", "s": 0.781, "in_tok": 2223, "out_tok": 22},
+             {"stage": "tool", "s": 0.36, "names": ["search_documents"]},
+             {"stage": "llm", "s": 1.797, "in_tok": 3064, "out_tok": 556}],
+  "other_s": 0.0, "query_s": 5.094, "ok": true
 }
 ```
 
-Token fields come from `usageMetadata` (`promptTokenCount`, `candidatesTokenCount`; also
-`thoughtsTokenCount` when present). The intent call's tokens are omitted in the first phase,
-because `classify` returns no usage. Adding them is a one-line change if intent turns out to
-matter.
+`metrics.json` gets `latency_stages`: `n`, `query_p50_s`, `query_p95_s`, `in_tok_mean`,
+`out_tok_mean` and, per stage name (including `other`), `turns`, `calls_per_turn`, `p50_s`,
+`p95_s`, `max_s`. A stage that ran several times in one turn is summed for that turn, and the
+percentiles are taken over the turns that had the stage.
+
+Token fields come from `usageMetadata` (`promptTokenCount`, `candidatesTokenCount`). The
+intent call's tokens are omitted in the first phase, because `classify` returns no usage.
+Adding them is a one-line change if intent turns out to matter.
 
 **Privacy:** the `timing` object holds only durations, counts, tool names and token counts.
 It never contains SQL, passages or file contents. This matches the rule in `logs.py`.

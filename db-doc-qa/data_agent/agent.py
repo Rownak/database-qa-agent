@@ -193,7 +193,9 @@ def _ensure_data(callback_context: CallbackContext, cfg: AgentConfig) -> None:
     Side Effects:
         May create ``<tmp>/adk_sheet_qa/<session_id>/data.db`` and ``docs.db`` and set
         ``db_path``, ``column_map``, ``schema_summary``, ``docs_db_path``,
-        ``docs_summary``, ``intent`` and ``intent_reason`` in the state. If a file
+        ``docs_summary``, ``intent`` and ``intent_reason`` in the state. With
+        ``cfg.latency_trace`` it also sets ``turn_timing`` (``[{"stage", "s"}]`` for the
+        data build, document build and intent steps that ran). If a file
         cannot be loaded it is skipped (the sample is used when none loads), and skipped documents are
         listed; both are put in ``load_error`` so the agent can explain them. Embeds
         document chunks (an API call) when ``docs.db`` is built. Always touches the
@@ -207,14 +209,18 @@ def _ensure_data(callback_context: CallbackContext, cfg: AgentConfig) -> None:
     if state.get("agent_config") != dumped:
         state["agent_config"] = dumped
 
+    stages: list[tuple[str, float | None]] = []  # None = the step did not run; kept only when latency_trace is on
     if all(state.get(k) is not None for k in _STATE_KEYS) and Path(db_path).is_file():
         sessions.touch(Path(db_path).parent)
     else:
-        _build_session_data(state, session_id)
+        stages.append(("data_build", _build_session_data(state, session_id)))
     if not _docs_ready(state):
-        _build_session_docs(state, session_id, cfg)
-    _classify_turn(callback_context, cfg)
+        stages.append(("docs_build", _build_session_docs(state, session_id, cfg)))
+    stages.append(("intent", _classify_turn(callback_context, cfg)))
     _sweep()
+    if cfg.latency_trace:
+        # Overwritten each turn; a step that did not run (None) has no entry rather than a zero.
+        state["turn_timing"] = [{"stage": n, "s": round(s, 4)} for n, s in stages if s is not None]
     return None
 
 
@@ -230,13 +236,16 @@ def _docs_ready(state) -> bool:
     return path is None or Path(path).is_file()
 
 
-def _build_session_docs(state, session_id: str, cfg: AgentConfig) -> None:
+def _build_session_docs(state, session_id: str, cfg: AgentConfig) -> float | None:
     """Builds ``docs.db`` from the ``docs`` state key (or the sample documents).
 
     Args:
         state: The ADK session state (mutable mapping).
         session_id: Id of the session; names the folder when ``data.db`` has none.
         cfg: Agent settings; ``chunking`` and ``embedding`` go to ``doc_ingest.build``.
+
+    Returns:
+        Seconds spent building, or ``None`` when there was nothing to build (no documents).
 
     Side Effects:
         Writes ``docs.db`` next to ``data.db``, sets ``docs_db_path`` (``None`` when no
@@ -257,7 +266,7 @@ def _build_session_docs(state, session_id: str, cfg: AgentConfig) -> None:
     if result is None:  # the user removed every document
         state["docs_db_path"], state["docs_summary"] = None, "No documents loaded"
         logger.info("session %s: no documents", session_id)
-        return
+        return None
     state["docs_db_path"] = str(result.docs_db_path) if result.docs_db_path else None
     state["docs_summary"] = result.docs_summary
     if result.skipped:
@@ -269,10 +278,12 @@ def _build_session_docs(state, session_id: str, cfg: AgentConfig) -> None:
             state["load_error"] = notice
         elif notice not in previous:  # a rebuild must not repeat an earlier notice
             state["load_error"] = f"{previous}\n{notice}"
+    elapsed = time.monotonic() - started
     logger.info(
         "session %s: documents built from %s, %d skipped, embedded=%s, %.2fs",
-        session_id, source, len(result.skipped), result.embedded, time.monotonic() - started,
+        session_id, source, len(result.skipped), result.embedded, elapsed,
     )
+    return elapsed
 
 
 def _sample_docs() -> list[dict]:
@@ -284,7 +295,7 @@ def _sample_docs() -> list[dict]:
     ]
 
 
-def _classify_turn(callback_context: CallbackContext, cfg: AgentConfig) -> None:
+def _classify_turn(callback_context: CallbackContext, cfg: AgentConfig) -> float | None:
     """Classifies the current user message and stores ``intent`` / ``intent_reason``.
 
     Runs after the databases are ready so the classifier sees the schema and document
@@ -295,6 +306,9 @@ def _classify_turn(callback_context: CallbackContext, cfg: AgentConfig) -> None:
         cfg: Agent settings; with ``intent_enabled`` false the turn is not classified
             and the intent is ``hybrid`` (reason ``intent_disabled``).
 
+    Returns:
+        Seconds spent in the classifier, or ``None`` when classification is disabled.
+
     Side Effects:
         Updates the state and logs the intent (never the question).
     """
@@ -304,23 +318,29 @@ def _classify_turn(callback_context: CallbackContext, cfg: AgentConfig) -> None:
     state = callback_context.state
     if not cfg.intent_enabled:
         state["intent"], state["intent_reason"] = "hybrid", "intent_disabled"
-        return
+        return None
+    started = time.monotonic()
     result = intent.classify(
         question,
         state.get("schema_summary"),
         state.get("docs_summary"),
         model=cfg.model.intent or cfg.model.agent,
     )
+    elapsed = time.monotonic() - started
     state["intent"], state["intent_reason"] = result.intent, result.reason
     logger.info("session %s: intent=%s (%s)", callback_context.session.id, result.intent, result.reason)
+    return elapsed
 
 
-def _build_session_data(state, session_id: str) -> None:
+def _build_session_data(state, session_id: str) -> float | None:
     """Loads the uploads (or the sample) into the session folder and fills the state.
 
     Args:
         state: The ADK session state (mutable mapping).
         session_id: Id of the session; names the folder under ``sessions.ROOT``.
+
+    Returns:
+        Seconds spent building, or ``None`` when not even the sample could be loaded.
 
     Side Effects:
         Writes ``data.db``, updates ``state`` and logs the outcome. A file that cannot
@@ -350,15 +370,16 @@ def _build_session_data(state, session_id: str) -> None:
 
     if isinstance(result, IngestError):  # the bundled sample should always load
         logger.error("session %s: sample failed to load: %s", session_id, result.message)
-        return
+        return None
     state["db_path"] = str(result.db_path)
     state["column_map"] = result.column_map
     state["schema_summary"] = result.schema_summary
+    elapsed = time.monotonic() - started
     logger.info(
         "session %s: data built from %s, %d table(s), %d rows, %.2fs",
-        session_id, source, len(result.tables), sum(t.row_count for t in result.tables),
-        time.monotonic() - started,
+        session_id, source, len(result.tables), sum(t.row_count for t in result.tables), elapsed,
     )
+    return elapsed
 
 
 def _parse_uploads(uploads: list[dict]) -> tuple[list[ParsedTable], dict[str, str]]:
