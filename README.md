@@ -104,6 +104,22 @@ Token F1 rewards wording, not correctness: table and section answers are right (
 
 **Key finding:** Tool orchestration was reliable, but hybrid question answering remains the main improvement area, particularly selecting the correct policy. Results are from a small internal benchmark, not a production evaluation.
 
+** Latency trace (`shipments_v1`) **
+
+Opt-in per-stage timing (`agent.latency_trace: true`) on 6 cases × 5 repeats, Gemini 3.5 Flash-Lite, in-process. Median query time (without document ingestion) was 3.7 s, p95 7.4 s.
+
+| Finding | Measurement |
+|---|---|
+| Model calls dominate | 47–66 % of a turn, about 0.7 s per call; latency follows the number of calls (1–6 per turn) |
+| Intent classifier | About 0.8 s per turn; turning it off cut the median by 22 % (3.7 s → 2.8 s), with 1 extra tool call in 30 turns |
+| Document search | 0.31 s per call, almost all query embedding; the search itself is under 1 ms |
+| Slowest case | Record with no matching policy: 6 model calls, 7.0 s median |
+| Noise | Two identical runs differ by about 0.5 s, so smaller gains are not meaningful |
+
+**Caveat:** These numbers come from a very small dataset (6 questions, 30 turns per run), so they show where time goes, not a production latency estimate.
+
+Details: [latency_report.md](dev_docs/design/latency_report.md).
+
 ## Local quick start
 
 **Requirements:** Python 3.12, [uv](https://docs.astral.sh/uv/), and a [Google AI Studio API key](https://aistudio.google.com/apikey).
@@ -137,6 +153,15 @@ uv run python -m evals configs/eval/bm25_only.yaml
 ```
 
 Runs save resolved configuration, per-case results, and metrics under `runs/`. The extended LakeQuest workflow requires separately downloaded benchmark data; it is not part of this quick start.
+
+**Latency trace** (off by default; needs the API key, about 3 minutes):
+
+```bash
+uv run python -m evals configs/eval/latency_shipments.yaml                         # tracing on, 30 turns
+uv run python -m evals configs/eval/smoke.yaml agent.latency_trace=true dataset.limit=1   # quick check
+```
+
+The summary prints a `stage p50` line and per-tag latency. Each `results.jsonl` row gets a `timing` object and `metrics.json` gets `latency_stages`. Add `agent.intent_enabled=false` (or any other `key=value`) to compare a change.
 
 **Embedding rate limits:** indexing many documents for a benchmark can hit the Gemini embedding rate limit (`ClientError`, retrieval falls back to BM25 only). For evaluation, the run config can choose a local Ollama embedding model instead (`agent.embedding.provider: ollama`, `model: nomic-embed-text:latest`, see `configs/eval/hybridqa_dev50_ollama.yaml`; needs `ollama pull nomic-embed-text`). The default stays Gemini, and a bundle must be rebuilt when the provider changes.
 

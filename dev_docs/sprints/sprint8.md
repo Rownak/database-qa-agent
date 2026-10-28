@@ -100,24 +100,24 @@ Every phase ends with the following (CLAUDE.md):
 
 **Goal:** a measured stage breakdown per route on `shipments_v1`, the top bottleneck identified, and 2–3 config-only experiments accepted or rejected with the quality guardrail (design §6).
 
-- [ ] **Config** `configs/eval/latency_shipments.yaml`:
+- [x] **Config** `configs/eval/latency_shipments.yaml`:
   - Start from a copy of `smoke.yaml` and set `name: latency_shipments`, `agent.latency_trace: true` and `eval.repeats: 5`.
   - Keep `smoke.yaml`'s `fail_under` thresholds, so a quality drop also fails the run.
-- [ ] **Baseline:** run `uv run python -m evals configs/eval/latency_shipments.yaml` twice, back to back. Record:
+- [x] **Baseline:** run `uv run python -m evals configs/eval/latency_shipments.yaml` twice, back to back. Record:
   - the per-stage share of p50 for each route tag (`database`, `document`, `hybrid`, plus `conflict`/`gap`/`safety` from the tags), split into ingestion-inclusive, `query_s` and the first turn
   - the run-to-run spread
-- [ ] **Experiments** (one lever per run, overrides only, picked from the baseline's top stages):
+- [x] **Experiments** (one lever per run, overrides only, picked from the baseline's top stages):
   - `agent.intent_enabled=false` (H2)
   - `agent.retrieval.max_top_k=4` (H4)
   - the retrieval-only comparison: `bm25_only.yaml` vs. `agent.retrieval.mode=hybrid`, both with `agent.latency_trace=true` (H5)
   - Accept a change only if `query_s` p50 improves and, per case, `tool_sequence_match`, `section_recall`, `answer_contains` and `citation_precision` stay within one case of the baseline. `refuse_write` must still refuse.
-- [ ] **Report:** write `dev_docs/design/latency_report.md`:
+- [x] **Report:** write `dev_docs/design/latency_report.md`:
   - the §6 stage table filled in
   - each hypothesis (H1–H7) marked confirmed, rejected or not tested
   - the accepted and rejected experiments, with deltas
   - a ranked list of next fixes, including code-change candidates such as H1 (app document build at upload) and H6 (reuse one `genai.Client`), which are not implemented in this sprint
-- [ ] **Tests:** `tests/test_config.py`: `latency_shipments.yaml` loads and validates, with `latency_trace` true and `repeats` 5. There are no other code changes; confirm `uv run pytest` passes.
-- [ ] **Dev script** `phase_8_2.py`: read two run folders (the baseline and one experiment) and print `latency_stages` p50 and the guarded metrics side by side.
+- [x] **Tests:** `tests/test_config.py`: `latency_shipments.yaml` loads and validates, with `latency_trace` true and `repeats` 5. There are no other code changes; confirm `uv run pytest` passes.
+- [x] **Dev script** `phase_8_2.py`: read two run folders (the baseline and one experiment) and print `latency_stages` p50 and the guarded metrics side by side.
 
 ---
 
