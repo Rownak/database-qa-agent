@@ -65,18 +65,18 @@ Every phase ends with the following (CLAUDE.md):
 
 **Goal:** the response cache measured on repeated and unique LakeQuest questions, with the threshold set from data (design §7). This phase also builds the workload and the arm comparison reused by 9.4, 9.6 and 9.7.
 
-- [ ] **Workload** (built once by `dev_test/phase_9_2_build.py`; nothing under `benchmark/` is committed): `benchmark/lakequest_prepared/bank_sample_cache/dataset.yaml`, keeping each original's `expected` and run in YAML order.
+- [x] **Workload** (built once by `dev_test/phase_9_2_build.py`; nothing under `benchmark/` is committed): `benchmark/lakequest_prepared/bank_sample_cache/dataset.yaml`, keeping each original's `expected` and run in YAML order.
   - **U:** the 40 originals.
   - **E:** 20 verbatim copies of half A.
   - **P:** 20 frozen paraphrases of half B, with ids, names and numbers checked equal to the original and read once by hand.
   - **N:** 10 near-miss entity swaps.
   - **S:** 4 stale probes on mutated copies of `bank.db` and `docs.db`, via per-case `state_file`.
   - Each case is tagged with its pass (`pass_unique`, `pass_exact`, `pass_paraphrase`, `pass_near_miss`, `pass_stale`).
-- [ ] **Config** `configs/eval/lakequest_cache.yaml`: `lakequest_bank.yaml` with the derived dataset, `latency_trace: true`, every cache off and `scope: dataset`.
-- [ ] **Hit-rate aggregation** (`evals/run.py`, `__main__.py`): `metrics["cache"]` counts the outcomes in `TurnResult.cache` per tag, generically for any cache, plus one summary line. Tested with a fake session.
-- [ ] **Runs and record:** baseline, `response.enabled=true` (exact), and `semantic=true shadow=true`. Record the standard set, plus model calls and tokens saved and a threshold sweep (0.90–0.99) from the shadow logs: pass-P hits and pass-N false hits with and without the guard.
-- [ ] **Report:** start `dev_docs/design/caching_report.md` with a §Response section: unique (cold) overhead, repeat (warm) benefit, quality, invalidation, the chosen threshold, and whether the semantic tier passes its ~9 % break-even.
-- [ ] **Dev script** `phase_9_2.py`: compare two run folders per pass (hit rate, p50 / p95, guarded metrics); 9.4, 9.6 and 9.7 reuse it.
+- [x] **Config** `configs/eval/lakequest_cache.yaml`: `lakequest_bank.yaml` with the derived dataset, `latency_trace: true`, every cache off and `scope: dataset`.
+- [x] **Hit-rate aggregation** (`evals/run.py`, `__main__.py`): `metrics["cache"]` counts the outcomes in `TurnResult.cache` per tag, generically for any cache, plus one summary line. Tested with a fake session.
+- [x] **Runs and record:** baseline, `response.enabled=true` (exact), and `semantic=true shadow=true`. Record the standard set, plus model calls and tokens saved and a threshold sweep (0.90–0.99) from the shadow logs: pass-P hits and pass-N false hits with and without the guard.
+- [x] **Report:** start `dev_docs/design/caching_report.md` with a §Response section: unique (cold) overhead, repeat (warm) benefit, quality, invalidation, the chosen threshold, and whether the semantic tier passes its ~9 % break-even.
+- [x] **Dev script** `phase_9_2.py`: compare two run folders per pass (hit rate, p50 / p95, guarded metrics); 9.4, 9.6 and 9.7 reuse it.
 
 ## Phase 9.3 — Prompt/Prefix Cache
 

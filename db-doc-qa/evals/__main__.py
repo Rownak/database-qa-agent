@@ -26,6 +26,10 @@ def format_summary(metrics: dict) -> str:
     if stages:
         shown = "  ".join(f"{name} {st['p50_s']:.2f}s" for name, st in stages["stages"].items())
         lines.append(f"  stage p50  {shown}  (query p50 {stages['query_p50_s']:.1f}s p95 {stages['query_p95_s']:.1f}s)")
+    for layer, part in (metrics.get("cache") or {}).get("all", {}).items():
+        shown = "  ".join(f"{o} {c}" for o, c in part["outcomes"].items())
+        why = "  bypass reasons: " + ", ".join(f"{k} {v}" for k, v in part["reasons"].items()) if "reasons" in part else ""
+        lines.append(f"  cache {layer}: {shown}  (hit rate {part['hit_rate']:.0%}){why}")
     for tag, part in metrics.get("by_tag", {}).items():
         values = "  ".join(f"{n}={v:.2f}" for n, v in part["metrics"].items() if v is not None)
         has_latency = part.get("latency_p50_s") is not None
