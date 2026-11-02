@@ -22,7 +22,7 @@ from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.genai import types
 
-from data_agent import sessions
+from data_agent import cache, sessions
 from data_agent.agent import build_agent
 from data_agent.config import AgentConfig
 from data_agent.events import TurnResult, parse_events, turn_timing
@@ -146,7 +146,8 @@ class AgentSession:
         parsed = parse_events(events, time.perf_counter() - started)
         timing = turn_timing(events, arrivals, setup or [], parsed.latency_s) if trace else None
         return TurnResult(
-            parsed.answer, parsed.calls, parsed.intent or intent_from_state, parsed.latency_s, error, timing
+            parsed.answer, parsed.calls, parsed.intent or intent_from_state, parsed.latency_s, error, timing,
+            parsed.cache,
         )
 
     def close(self, delete_files: bool = True) -> None:
@@ -157,8 +158,9 @@ class AgentSession:
                 passes ``False`` when it replaces the session and keeps the same folder.
 
         Side Effects:
-            Never raises; a failure to delete is ignored.
+            Drops the session's cache entries. Never raises; a failure to delete is ignored.
         """
+        cache.drop(self.session_id)
         try:
             asyncio.run(self.adk.delete_session(app_name=APP_NAME, user_id=USER_ID, session_id=self.session_id))
         except Exception:

@@ -128,6 +128,8 @@ def _row(case: EvalCase, repeat: int, result: TurnResult, names: list[str]) -> d
     }
     if result.timing is not None:  # only with agent.latency_trace; otherwise the row keeps its old keys
         row["timing"] = result.timing
+    if result.cache is not None:  # only with a cache on; the row keeps its old keys otherwise
+        row["cache"] = result.cache
     return row
 
 
@@ -255,6 +257,51 @@ def _aggregate(rows: list[dict], names: list[str]) -> dict:
     return agg
 
 
+# String entries of a row's ``cache`` dict that describe an outcome rather than being one.
+_CACHE_DETAIL_KEYS = ("reason", "entry", "error", "intent")
+
+
+def _cache_counts(rows: list[dict]) -> dict | None:
+    """Counts the outcomes the caches reported, overall and per case tag, or ``None`` if no row has any.
+
+    Generic: every string-valued entry of a row's ``cache`` dict (except the detail keys in
+    :data:`_CACHE_DETAIL_KEYS`) is the outcome of one cache layer (``{"response": "hit_exact"}``) and is
+    counted under its key, so a later cache that adds its own key needs no change here. An outcome that
+    starts with ``hit`` is a hit. The ``reason`` of a ``bypass`` is counted under ``reasons``.
+
+    Returns:
+        ``{"all": counts, "by_tag": {tag: counts}}`` where ``counts`` is
+        ``{layer: {"n", "hits", "hit_rate", "outcomes": {outcome: count}, "reasons": {reason: count}}}``
+        (``reasons`` only when a bypass gave one).
+    """
+    cached = [r for r in rows if r.get("cache")]
+    if not cached:
+        return None
+
+    def count(subset: list[dict]) -> dict:
+        layers: dict[str, dict[str, int]] = {}
+        reasons: dict[str, dict[str, int]] = {}
+        for r in subset:
+            for layer, outcome in r["cache"].items():
+                if isinstance(outcome, str) and layer not in _CACHE_DETAIL_KEYS:
+                    layers.setdefault(layer, {}).setdefault(outcome, 0)
+                    layers[layer][outcome] += 1
+                    if outcome == "bypass" and r["cache"].get("reason"):
+                        why = reasons.setdefault(layer, {})
+                        why[r["cache"]["reason"]] = why.get(r["cache"]["reason"], 0) + 1
+        out = {}
+        for layer, outcomes in layers.items():
+            n = sum(outcomes.values())
+            hits = sum(c for o, c in outcomes.items() if o.startswith("hit"))
+            out[layer] = {"n": n, "hits": hits, "hit_rate": hits / n, "outcomes": dict(sorted(outcomes.items()))}
+            if layer in reasons:
+                out[layer]["reasons"] = dict(sorted(reasons[layer].items()))
+        return out
+
+    tags = sorted({t for r in cached for t in r["tags"]})
+    return {"all": count(cached), "by_tag": {t: count([r for r in cached if t in r["tags"]]) for t in tags}}
+
+
 def _by_tag(rows: list[dict], names: list[str]) -> dict[str, dict]:
     """Means per case tag (for example ``hybrid`` / ``table`` / ``document``): ``{tag: {"n", "metrics"}}``.
 
@@ -285,7 +332,8 @@ def run_eval(cfg: RunConfig, run_dir: Path, session_factory: Callable = AgentSes
 
     Returns:
         ``{"n", "errors", "latency_p50_s", "latency_p95_s", "metrics": {name: mean | None},
-        "by_tag": {tag: {"n", "metrics"}}}``, plus ``"data"`` (the bundle's ``prepare.json``)
+        "by_tag": {tag: {"n", "metrics"}}}``, plus ``"cache"`` (outcome counts, see
+        :func:`_cache_counts`) when a cache reported, and ``"data"`` (the bundle's ``prepare.json``)
         for a prebuilt dataset (the first ``prepare.json`` found). ``n`` counts case runs (cases times repeats); an errored run
         is scored like any other, with its empty answer.
 
@@ -332,6 +380,9 @@ def run_eval(cfg: RunConfig, run_dir: Path, session_factory: Callable = AgentSes
                 rows.append(_row(case, repeat, result, names))
     metrics = _aggregate(rows, names)
     metrics["by_tag"] = _by_tag(rows, names)
+    cache_counts = _cache_counts(rows)
+    if cache_counts is not None:
+        metrics["cache"] = cache_counts
     if data is not None:
         metrics["data"] = data
     report.write_run(run_dir, cfg, rows, metrics)

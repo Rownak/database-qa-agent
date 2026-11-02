@@ -14,6 +14,8 @@ import tempfile
 import time
 from pathlib import Path
 
+from data_agent import cache
+
 ROOT = Path(tempfile.gettempdir()) / "adk_sheet_qa"
 MAX_AGE_SECONDS = 30 * 60
 
@@ -98,7 +100,8 @@ def end_session(session_dir: Path) -> None:
         session_dir: The session folder to remove.
 
     Side Effects:
-        Recursively deletes the folder; errors are ignored so a locked file never
-        blocks the user.
+        Recursively deletes the folder and drops the session's cache entries (the folder
+        is named by the session id); errors are ignored so a locked file never blocks the user.
     """
     shutil.rmtree(session_dir, ignore_errors=True)
+    cache.drop(session_dir.name)
