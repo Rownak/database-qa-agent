@@ -118,6 +118,49 @@ class RetrievalConfig(BaseModel):
     max_passage_chars: int = Field(1200, gt=0)
 
 
+class ResponseCacheConfig(BaseModel):
+    """Settings of the semantic response cache (a repeated first question is answered from memory).
+
+    Attributes:
+        enabled: Master switch. Off, the agent runs exactly as without a cache; ``semantic`` and
+            ``shadow`` only apply when this is on.
+        semantic: Also match paraphrases by question embedding. False means the exact tier only,
+            which makes no embedding call.
+        threshold: Minimum cosine similarity of the question embeddings for a semantic hit.
+        entity_guard: A semantic hit also needs the same identifier-like tokens (numbers, quoted
+            strings, file names, names) in both questions.
+        shadow: Look up semantic neighbours and record the nearest similarity, the guard result and
+            the nearest entry in ``state["cache"]``, but never serve a semantic hit (threshold sweeps).
+        ttl_s: Seconds an entry lives.
+        max_entries: Entries kept before the least recently used is dropped.
+        scope: ``session`` shares entries only inside one session; ``dataset`` shares them between
+            sessions whose data, document and configuration fingerprints are identical.
+    """
+
+    model_config = _FROZEN
+
+    enabled: bool = False
+    semantic: bool = False
+    threshold: float = Field(0.97, ge=0, le=1)
+    entity_guard: bool = True
+    shadow: bool = False
+    ttl_s: float = Field(3600, gt=0)
+    max_entries: int = Field(1000, gt=0)
+    scope: Literal["session", "dataset"] = "session"
+
+
+class CacheConfig(BaseModel):
+    """The opt-in caches, one block each; every cache is off by default.
+
+    Attributes:
+        response: The semantic response cache.
+    """
+
+    model_config = _FROZEN
+
+    response: ResponseCacheConfig = Field(default_factory=ResponseCacheConfig)
+
+
 class AgentConfig(BaseModel):
     """Everything that changes an answer; recorded in the session state as ``agent_config``.
 
@@ -137,6 +180,8 @@ class AgentConfig(BaseModel):
         latency_trace: Diagnostic flag; it never changes an answer. When true, each turn records
             the duration of the stages that ran (session setup, intent, model calls, tools) in
             ``TurnResult.timing``. Off by default, and then nothing is recorded or read.
+        cache: The opt-in caches (see :class:`CacheConfig`). They only skip repeated work, so they are
+            left out of the fingerprint that keys cached answers.
     """
 
     model_config = _FROZEN
@@ -147,6 +192,7 @@ class AgentConfig(BaseModel):
     intent_enabled: bool = True  # False skips classification (ablation)
     intent_prompt_file: Path | None = None
     latency_trace: bool = False
+    cache: CacheConfig = Field(default_factory=CacheConfig)
     embedding: EmbeddingConfig = Field(default_factory=EmbeddingConfig)
     chunking: ChunkingConfig = Field(default_factory=ChunkingConfig)
     retrieval: RetrievalConfig = Field(default_factory=RetrievalConfig)

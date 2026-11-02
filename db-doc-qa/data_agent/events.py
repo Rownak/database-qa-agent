@@ -26,6 +26,9 @@ class TurnResult:
         error: An exception message when the turn failed; a turn never raises.
         timing: The latency trace (see :func:`turn_timing`), only when ``agent.latency_trace``
             is on; ``None`` otherwise.
+        cache: What the response cache did, only when ``agent.cache.response`` is on: ``{"response":
+            "hit_exact" | "hit_semantic" | "miss" | "bypass", ...}`` (similarity, age, reason). On a
+            hit, ``calls`` holds the stored tool-call summary; ``None`` otherwise.
     """
 
     answer: str
@@ -34,6 +37,17 @@ class TurnResult:
     latency_s: float = 0.0
     error: str | None = None
     timing: dict | None = None
+    cache: dict | None = None
+
+
+def _cache_outcome(event: dict) -> dict | None:
+    """Returns the response-cache outcome an event carries in its state delta, or ``None``."""
+    value = ((event.get("actions") or {}).get("stateDelta") or {}).get("cache")
+    return value if isinstance(value, dict) else None
+
+
+def _is_cache_hit(outcome: dict | None) -> bool:
+    return bool(outcome) and str(outcome.get("response", "")).startswith("hit")
 
 
 def parse_events(events: list[dict], latency_s: float = 0.0) -> TurnResult:
@@ -47,13 +61,18 @@ def parse_events(events: list[dict], latency_s: float = 0.0) -> TurnResult:
     Returns:
         A :class:`TurnResult`. The answer is the text of the last event that has any
         (model "thought" parts are skipped). Each call's ``response`` is matched by id,
-        else by name in call order. ``intent`` is the last ``stateDelta["intent"]``.
+        else by name in call order. ``intent`` is the last ``stateDelta["intent"]``. When the
+        response cache answered, ``cache`` holds its outcome and ``calls`` the stored summary.
     """
     calls: list[dict] = []
     ids: list[str | None] = []
     answer = ""
     intent: str | None = None
+    cache: dict | None = None
     for event in events:
+        outcome = _cache_outcome(event)
+        if outcome is not None:
+            cache = outcome
         delta = (event.get("actions") or {}).get("stateDelta") or {}
         if isinstance(delta.get("intent"), str):
             intent = delta["intent"]
@@ -69,7 +88,12 @@ def parse_events(events: list[dict], latency_s: float = 0.0) -> TurnResult:
         text = "".join(p.get("text") or "" for p in parts if not p.get("thought"))
         if text:
             answer = text
-    return TurnResult(answer, calls, intent, latency_s)
+    if cache is not None:
+        stored = cache.get("calls")
+        if _is_cache_hit(cache) and isinstance(stored, list):
+            calls = [dict(c) for c in stored]  # the hit ran no tools; metrics read the stored summary
+        cache = {k: v for k, v in cache.items() if k != "calls"}
+    return TurnResult(answer, calls, intent, latency_s, cache=cache)
 
 
 def _attach_response(calls: list[dict], ids: list[str | None], resp: dict) -> None:
@@ -120,7 +144,8 @@ def turn_timing(events: list[dict], arrivals: list[float], setup: list[dict], la
     function-response event when its tools have. Each event that carries content therefore
     closes one stage, running from the previous such event (or from the end of the session setup)
     to its own arrival: ``llm`` for a model event, ``tool`` for a function response. Only events
-    that happened produce a stage, so a turn with no tool call has no ``tool`` entry. Events
+    that happened produce a stage, so a turn with no tool call has no ``tool`` entry. The event
+    that serves a response-cache hit is skipped, so a cached answer never counts as an ``llm`` stage. Events
     without content (state deltas) and partial streaming chunks are skipped; the time before
     the next stage absorbs them.
 
@@ -139,8 +164,8 @@ def turn_timing(events: list[dict], arrivals: list[float], setup: list[dict], la
     cursor = sum(st["s"] for st in stages)
     for event, at in zip(events, arrivals):
         parts = (event.get("content") or {}).get("parts") or []
-        if event.get("partial") or not parts:
-            continue
+        if event.get("partial") or not parts or _is_cache_hit(_cache_outcome(event)):
+            continue  # a cached answer is not a model call; its time stays in the residual
         responses = [p["functionResponse"].get("name", "") for p in parts if p.get("functionResponse")]
         if responses:
             stage = {"stage": "tool", "s": max(0.0, at - cursor), "names": responses}

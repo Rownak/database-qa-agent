@@ -1,0 +1,25 @@
+name: lakequest_cache
+# lakequest_bank.yaml on the derived cache workload (build it once: uv run python -m dev_test.phase_9_2_build).
+# Every cache is off here; an arm differs from the baseline only by dotted overrides, for example
+#   agent.cache.response.enabled=true
+#   agent.cache.response.enabled=true agent.cache.response.semantic=true agent.cache.response.shadow=true
+agent:
+  profile: lakequest
+  intent_enabled: true
+  intent_prompt_file: configs/prompts/intent_lakequest.md
+  latency_trace: true           # stages, tokens and the cache_lookup step
+  model:
+    agent: gemini-3.5-flash-lite
+    temperature: 0.0
+  retrieval:
+    mode: hybrid
+  cache:
+    response:
+      enabled: false
+      scope: dataset            # every case is a new session, so entries must be shared between sessions
+dataset:
+  path: ../benchmark/lakequest_prepared/bank_sample_cache/dataset.yaml
+eval:
+  mode: agent
+  metrics: [tool_sequence_match, section_recall, answer_contains, citation_precision,
+            answer_f1, object_f1, coverage]

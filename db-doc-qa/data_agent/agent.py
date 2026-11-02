@@ -6,6 +6,10 @@ the app and the evaluation, which supply the session state (``uploads``, ``docs`
 through :class:`data_agent.runner.AgentSession`, and the read-only functions in :mod:`data_agent.tools`, which
 are its only way to touch data. ``ensure_data`` builds the session's ``data.db`` and
 ``docs.db`` on whichever instance serves the request and classifies the user's intent.
+With ``agent.cache.response.enabled`` that work is split into three callbacks (build, response-cache
+lookup, classify) so that a cached answer skips the classifier, the model and the tools.
+With ``agent.cache.response.enabled`` the same work is split into three callbacks (build, response-cache
+lookup, classify) so that a cached answer skips the classifier, the model and the tools.
 
 Settings come from :class:`data_agent.config.AgentConfig`: :func:`build_agent` builds the agent
 from one, and ``root_agent`` uses the file named by ``DATA_AGENT_CONFIG`` (the defaults when unset).
@@ -14,15 +18,21 @@ The module constants such as ``AGENT_MODEL`` are aliases of those defaults.
 
 import base64
 import binascii
+import inspect
+import re
 import time
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 
+import numpy as np
 from dotenv import load_dotenv
 from google.adk.agents import Agent
 from google.adk.agents.callback_context import CallbackContext
 from google.genai import types
 
+from data_agent import cache as cache_lib
+from data_agent import cache as cache_lib
 from data_agent import doc_ingest, intent, sessions
 from data_agent.config import AgentConfig, ModelConfig, load_agent_config
 from data_agent.ingest import (
@@ -205,19 +215,10 @@ def _load_intent_prompt(cfg: AgentConfig) -> str | None:
 
 
 def _ensure_data(callback_context: CallbackContext, cfg: AgentConfig, intent_prompt: str | None = None) -> None:
-    """Makes sure this session's ``data.db`` and ``docs.db`` exist (before-agent callback).
+    """Makes sure this session's ``data.db`` and ``docs.db`` exist, then classifies the message (before-agent callback).
 
-    The Streamlit UI (or ``adk web``) creates the ADK session; the databases themselves
-    are built here, on whichever instance serves the request. Cloud Run's ``/tmp`` is
-    in-memory and lost when an instance is replaced, so each file is rebuilt from the
-    session state whenever it is missing, and the other one is left untouched:
-
-    * ``data.db``: one table per file of the ``uploads`` list (``[{name, b64}]``, up to
-      ``MAX_TABLES``) the UI stored, or the bundled sample when there is none.
-    * ``docs.db``: from the ``docs`` list (``[{name, b64}]``). A missing ``docs`` key
-      means the bundled sample documents; ``[]`` means no documents.
-
-    Once both are ready, the user's message is classified (see :mod:`data_agent.intent`).
+    This is :func:`_prepare_session` followed by :func:`_classify_turn`; it is the single callback
+    used when no cache is enabled. With the response cache the two halves run as separate callbacks.
 
     Args:
         callback_context: ADK callback context; its ``state`` is read and updated and
@@ -229,16 +230,46 @@ def _ensure_data(callback_context: CallbackContext, cfg: AgentConfig, intent_pro
         None, so the agent run continues normally.
 
     Side Effects:
+        See :func:`_prepare_session` and :func:`_classify_turn`. With ``cfg.latency_trace`` it also
+        sets ``turn_timing`` (``[{"stage", "s"}]`` for the data build, document build and intent steps
+        that ran). Always touches the session folder and deletes folders idle for longer than
+        ``sessions.MAX_AGE_SECONDS``.
+    """
+    stages = _prepare_session(callback_context, cfg)
+    stages.append(("intent", _classify_turn(callback_context, cfg, intent_prompt)))
+    _sweep()
+    _set_timing(callback_context.state, cfg, stages)
+    return None
+
+
+def _prepare_session(callback_context: CallbackContext, cfg: AgentConfig) -> list[tuple[str, float | None]]:
+    """Makes sure this session's ``data.db`` and ``docs.db`` exist.
+
+    The Streamlit UI (or ``adk web``) creates the ADK session; the databases themselves
+    are built here, on whichever instance serves the request. Cloud Run's ``/tmp`` is
+    in-memory and lost when an instance is replaced, so each file is rebuilt from the
+    session state whenever it is missing, and the other one is left untouched:
+
+    * ``data.db``: one table per file of the ``uploads`` list (``[{name, b64}]``, up to
+      ``MAX_TABLES``) the UI stored, or the bundled sample when there is none.
+    * ``docs.db``: from the ``docs`` list (``[{name, b64}]``). A missing ``docs`` key
+      means the bundled sample documents; ``[]`` means no documents.
+
+    Args:
+        callback_context: ADK callback context; its ``state`` is read and updated and
+            its ``session.id`` names the session folder.
+        cfg: Agent settings (see :func:`make_ensure_data`).
+
+    Returns:
+        ``[(stage, seconds | None)]`` for the build steps; ``None`` means the step did not run.
+
+    Side Effects:
         May create ``<tmp>/adk_sheet_qa/<session_id>/data.db`` and ``docs.db`` and set
-        ``db_path``, ``column_map``, ``schema_summary``, ``docs_db_path``,
-        ``docs_summary``, ``intent`` and ``intent_reason`` in the state. With
-        ``cfg.latency_trace`` it also sets ``turn_timing`` (``[{"stage", "s"}]`` for the
-        data build, document build and intent steps that ran). If a file
+        ``db_path``, ``column_map``, ``schema_summary``, ``docs_db_path`` and ``docs_summary`` in the
+        state, plus ``agent_config`` (the JSON form of ``cfg``). If a file
         cannot be loaded it is skipped (the sample is used when none loads), and skipped documents are
         listed; both are put in ``load_error`` so the agent can explain them. Embeds
-        document chunks (an API call) when ``docs.db`` is built. Always touches the
-        session folder and deletes folders idle for longer than
-        ``sessions.MAX_AGE_SECONDS``.
+        document chunks (an API call) when ``docs.db`` is built.
     """
     state = callback_context.state
     session_id = callback_context.session.id
@@ -254,12 +285,23 @@ def _ensure_data(callback_context: CallbackContext, cfg: AgentConfig, intent_pro
         stages.append(("data_build", _build_session_data(state, session_id)))
     if not _docs_ready(state):
         stages.append(("docs_build", _build_session_docs(state, session_id, cfg)))
-    stages.append(("intent", _classify_turn(callback_context, cfg, intent_prompt)))
-    _sweep()
-    if cfg.latency_trace:
-        # Overwritten each turn; a step that did not run (None) has no entry rather than a zero.
-        state["turn_timing"] = [{"stage": n, "s": round(s, 4)} for n, s in stages if s is not None]
-    return None
+    return stages
+
+
+def _set_timing(state, cfg: AgentConfig, stages: list[tuple[str, float | None]], append: bool = False) -> None:
+    """Writes ``state["turn_timing"]`` when ``cfg.latency_trace`` is on.
+
+    Args:
+        state: The ADK session state.
+        cfg: Agent settings.
+        stages: ``[(stage, seconds | None)]``; a step that did not run (``None``) gets no entry
+            rather than a zero.
+        append: Add to the entries already written this turn instead of replacing them.
+    """
+    if not cfg.latency_trace:
+        return
+    kept = [{"stage": n, "s": round(s, 4)} for n, s in stages if s is not None]
+    state["turn_timing"] = [*(state.get("turn_timing") or []), *kept] if append else kept
 
 
 def _docs_ready(state) -> bool:
@@ -333,6 +375,12 @@ def _sample_docs() -> list[dict]:
     ]
 
 
+def _question_text(callback_context: CallbackContext) -> str:
+    """Returns the text of the user's message in this invocation (empty if there is none)."""
+    parts = getattr(getattr(callback_context, "user_content", None), "parts", None) or []
+    return " ".join(p.text for p in parts if getattr(p, "text", None))
+
+
 def _classify_turn(
     callback_context: CallbackContext, cfg: AgentConfig, intent_prompt: str | None = None
 ) -> float | None:
@@ -353,9 +401,7 @@ def _classify_turn(
     Side Effects:
         Updates the state and logs the intent (never the question).
     """
-    content = getattr(callback_context, "user_content", None)
-    parts = getattr(content, "parts", None) or []
-    question = " ".join(p.text for p in parts if getattr(p, "text", None)) or None
+    question = _question_text(callback_context) or None
     state = callback_context.state
     if not cfg.intent_enabled:
         state["intent"], state["intent_reason"] = "hybrid", "intent_disabled"
@@ -462,6 +508,339 @@ def _sweep() -> None:
         logger.info("swept %d stale session folder(s)", len(removed))
 
 
+# --- semantic response cache (Sprint 9, Phase 9.1) ---
+
+RESPONSE_STORE = "response"
+EMBEDDING_STORE = "embedding"
+MAX_QUESTION_CHARS = 2000
+_TIME_RELATIVE_RE = re.compile(
+    r"\b(today|tonight|tomorrow|yesterday|now|currently|current|latest|recent(?:ly)?"
+    r"|(?:this|last|next) (?:week|month|year|quarter))\b",
+    re.IGNORECASE,
+)
+_PASSAGE_KEYS = ("chunk_id", "source", "section_path", "section_number", "page_start", "page_end")
+
+
+@dataclass(frozen=True)
+class _ResponseEntry:
+    """One cached turn: the answer and what the metrics need from the original run.
+
+    Attributes:
+        entry_id: Short hash of the normalised question; names the entry in shadow output.
+        answer: The final answer text.
+        intent: The classified intent of the original turn.
+        calls: Tool-call summary ``[{"name", "args", "response"}]`` without rows or passage text.
+        tokens: Identifier-like tokens of the question, for the entity guard.
+        embedding: Question embedding, or ``None`` when only the exact tier was active.
+        created: Store clock time, to report the age of a hit.
+    """
+
+    entry_id: str
+    answer: str
+    intent: str | None
+    calls: list[dict]
+    tokens: frozenset[str]
+    embedding: np.ndarray | None
+    created: float
+
+
+def _config_fingerprint(cfg: AgentConfig, instruction: str, intent_prompt: str | None) -> str:
+    """Fingerprints everything that shapes an answer apart from the data (see :func:`cache.cfg_fp`).
+
+    Args:
+        cfg: Agent settings.
+        instruction: The resolved instruction text (the file contents when ``instruction_file`` is set).
+        intent_prompt: The configured intent prompt text, or ``None`` for the built-in one.
+
+    Returns:
+        A sha256 hex digest.
+    """
+    tools = "\n".join(f"{t.__name__}{inspect.signature(t)}\n{inspect.getdoc(t)}" for t in (run_sql, search_documents))
+    prompt = (intent_prompt or intent.DEFAULT_PROMPT) if cfg.intent_enabled else None
+    return cache_lib.cfg_fp(cfg.model_dump(mode="json"), instruction, prompt, tools)
+
+
+def _response_store(cfg: AgentConfig) -> cache_lib.TTLStore:
+    """Returns the process-wide response store, sized by ``cfg.cache.response``."""
+    rc = cfg.cache.response
+    return cache_lib.get_store(RESPONSE_STORE, max_entries=rc.max_entries, ttl_s=rc.ttl_s)
+
+
+def _scope_id(callback_context: CallbackContext, cfg: AgentConfig) -> str:
+    """The cache scope: the session id, or ``""`` (shared by every session) for ``scope: dataset``."""
+    return callback_context.session.id if cfg.cache.response.scope == "session" else ""
+
+
+def _data_fingerprints(state) -> tuple[str, str] | None:
+    """Returns ``(data_fp, docs_fp)`` of the session's databases, or ``None`` if either is unknown.
+
+    A session without documents has the fixed docs fingerprint ``"none"``; a documents file that
+    cannot be read means the fingerprint is missing and the cache is bypassed.
+    """
+    data_fp = cache_lib.file_fp(state.get("db_path"))
+    if state.get("docs_db_path"):
+        docs_fp = cache_lib.file_fp(state.get("docs_db_path"))
+    else:
+        docs_fp = "none" if state.get("docs_summary") is not None else None
+    return (data_fp, docs_fp) if data_fp and docs_fp else None
+
+
+def _bypass_reason(callback_context: CallbackContext, question: str) -> str | None:
+    """Tells why this turn may not use the response cache, or ``None`` if it may.
+
+    Only the first user message of a session is eligible: a follow-up depends on the conversation,
+    so it is never matched. Time-relative questions and sessions with partial data are bypassed too.
+    """
+    events = getattr(callback_context.session, "events", None)
+    if events is None:
+        return "no_history"
+    if sum(1 for e in events if getattr(e, "author", None) == "user") > 1:
+        return "follow_up"
+    if not question.strip():
+        return "empty"
+    if len(question) > MAX_QUESTION_CHARS:
+        return "too_long"
+    if _TIME_RELATIVE_RE.search(question):
+        return "time_relative"
+    if callback_context.state.get("load_error"):
+        return "load_error"
+    return None
+
+
+def _question_vector(question: str, cfg: AgentConfig, scope_id: str, compute: bool) -> np.ndarray | None:
+    """Returns the question's embedding from the embedding cache, embedding it first if ``compute``.
+
+    Returns:
+        The vector, or ``None`` when it is unknown and could not be computed (the exact tier still applies).
+    """
+    emb = cfg.embedding
+    store = cache_lib.get_store(EMBEDDING_STORE, max_entries=5000, ttl_s=86400)
+    key = (scope_id, EMBEDDING_STORE, emb.provider, emb.model, emb.dim, "RETRIEVAL_QUERY", cache_lib.text_hash(question))
+    vec = store.get(key)
+    if vec is None and compute:
+        out = doc_ingest.embed([question], "RETRIEVAL_QUERY", **doc_ingest.embed_options(emb))
+        if out is not None and len(out):
+            vec = np.asarray(out[0], dtype=np.float32)
+            store.put(key, vec)
+    return vec
+
+
+def _lookup_response(
+    callback_context: CallbackContext, cfg: AgentConfig, cfg_fp: str
+) -> tuple[types.Content | None, dict]:
+    """Looks the question up in the response cache: exact tier, then the semantic tier.
+
+    Args:
+        callback_context: ADK callback context (the build callback has already run).
+        cfg: Agent settings; ``cfg.cache.response`` drives the lookup.
+        cfg_fp: Fingerprint of the configuration and prompts (see :func:`_config_fingerprint`).
+
+    Returns:
+        ``(content, outcome)``. ``content`` is the stored answer on a hit, else ``None``. ``outcome``
+        is what goes to ``state["cache"]``: ``response`` is ``hit_exact``, ``hit_semantic``, ``miss``
+        or ``bypass`` (with a ``reason``); a hit also carries ``similarity``, ``age_s``, ``entry``, the
+        stored ``intent`` and ``calls``; with ``shadow`` a miss carries the nearest neighbour.
+    """
+    rc = cfg.cache.response
+    state = callback_context.state
+    question = _question_text(callback_context)
+    reason = _bypass_reason(callback_context, question)
+    fps = None if reason else _data_fingerprints(state)
+    if reason or fps is None:
+        return None, {"response": "bypass", "reason": reason or "no_fingerprint"}
+
+    scope_id = _scope_id(callback_context, cfg)
+    prefix = (scope_id, RESPONSE_STORE, *fps, cfg_fp)
+    store = _response_store(cfg)
+
+    def hit(kind: str, entry: _ResponseEntry, similarity: float) -> tuple[types.Content, dict]:
+        return types.Content(role="model", parts=[types.Part(text=entry.answer)]), {
+            "response": kind, "similarity": round(similarity, 4), "age_s": round(store.now() - entry.created, 3),
+            "entry": entry.entry_id, "intent": entry.intent, "calls": entry.calls,
+        }
+
+    entry = store.get((*prefix, cache_lib.text_hash(question)))
+    if entry is not None:
+        return hit("hit_exact", entry, 1.0)
+
+    outcome: dict = {"response": "miss"}
+    if rc.semantic or rc.shadow:
+        vec = _question_vector(question, cfg, scope_id, compute=True)
+        candidates = [(k, e) for k, e in store.scan(prefix) if e.embedding is not None] if vec is not None else []
+        best = cache_lib.cosine_best(vec, ((i, e.embedding) for i, (_, e) in enumerate(candidates))) if candidates else None
+        if best is not None:
+            near_key, near = candidates[best[0]]
+            sim = best[1]
+            guard = (not rc.entity_guard) or near.tokens == cache_lib.entity_tokens(question)
+            if rc.shadow:
+                outcome["shadow"] = {"similarity": round(sim, 4), "guard": guard, "nearest": near.entry_id}
+                logger.info(
+                    "session %s: response cache shadow similarity=%.4f guard=%s nearest=%s",
+                    callback_context.session.id, sim, guard, near.entry_id,
+                )
+            elif sim >= rc.threshold and guard:
+                store.get(near_key)  # marks the entry recently used
+                return hit("hit_semantic", near, sim)
+    return None, outcome
+
+
+def make_response_lookup(cfg: AgentConfig, cfg_fp: str) -> Callable[[CallbackContext], types.Content | None]:
+    """Returns the before-agent callback that answers from the response cache.
+
+    Args:
+        cfg: Agent settings.
+        cfg_fp: Fingerprint of the configuration and prompts (see :func:`_config_fingerprint`).
+
+    Returns:
+        A callback that returns the stored answer as content on a hit (which ends the invocation, so
+        the classifier, the model and the tools do not run) and ``None`` otherwise.
+
+    Side Effects:
+        Always sets ``state["cache"]`` to the outcome (see :func:`_lookup_response`). On a hit it also
+        sets ``intent`` / ``intent_reason`` from the stored turn. With ``cfg.latency_trace`` it adds a
+        ``cache_lookup`` stage to ``turn_timing``. Any exception is a miss, logged by type only.
+    """
+
+    def lookup(callback_context: CallbackContext) -> types.Content | None:
+        started = time.perf_counter()
+        state = callback_context.state
+        try:
+            content, outcome = _lookup_response(callback_context, cfg, cfg_fp)
+        except Exception as exc:  # a cache must never decide whether a question is answered
+            logger.warning("response cache: lookup failed (%s); treated as a miss", type(exc).__name__)
+            content, outcome = None, {"response": "miss", "error": type(exc).__name__}
+        if content is not None:
+            state["intent"], state["intent_reason"] = outcome.pop("intent", None) or "hybrid", "cache_hit"
+            logger.info("session %s: response cache %s", callback_context.session.id, outcome["response"])
+        state["cache"] = outcome
+        _set_timing(state, cfg, [("cache_lookup", time.perf_counter() - started)], append=True)
+        return content
+
+    return lookup
+
+
+def _turn_summary(events: list) -> tuple[str, list[dict]] | None:
+    """Reads the final answer and the tool calls from the events of one turn.
+
+    Args:
+        events: The ADK events of this invocation, in order.
+
+    Returns:
+        ``(answer, calls)``, or ``None`` if the turn must not be cached: no answer, a call without a
+        response, a tool error, or a truncated SQL result. ``calls`` is a summary
+        ``[{"name", "args", "response"}]`` that keeps passage identifiers but no text and no rows.
+    """
+    open_calls: list[tuple[str | None, dict]] = []
+    answer = ""
+    for ev in events:
+        if getattr(ev, "partial", None) or getattr(ev, "author", None) == "user":
+            continue
+        parts = getattr(getattr(ev, "content", None), "parts", None) or []
+        for part in parts:
+            if getattr(part, "function_call", None):
+                fc = part.function_call
+                open_calls.append((fc.id, {"name": fc.name or "", "args": dict(fc.args or {}), "response": None}))
+            if getattr(part, "function_response", None):
+                fr = part.function_response
+                for cid, call in open_calls:
+                    if call["response"] is None and ((fr.id and cid == fr.id) or (not fr.id and call["name"] == fr.name)):
+                        call["response"] = dict(fr.response or {})
+                        break
+        text = "".join(p.text or "" for p in parts if getattr(p, "text", None) and not getattr(p, "thought", None))
+        if text:
+            answer = text
+    if not answer.strip():
+        return None
+    calls = [c for _, c in open_calls]
+    for call in calls:
+        resp = call["response"]
+        if not isinstance(resp, dict) or resp.get("status") != "success" or resp.get("truncated"):
+            return None
+        if call["name"] == "search_documents":
+            passages = [{k: p.get(k) for k in _PASSAGE_KEYS} for p in resp.get("passages") or [] if isinstance(p, dict)]
+            call["response"] = {"status": "success", "passages": passages}
+        elif call["name"] == "run_sql":
+            call["response"] = {"status": "success", "row_count": resp.get("row_count"), "truncated": False}
+        else:
+            call["response"] = {"status": "success"}
+    return answer, calls
+
+
+def make_response_store(cfg: AgentConfig, cfg_fp: str) -> Callable[[CallbackContext], None]:
+    """Returns the after-agent callback that stores an answered turn in the response cache.
+
+    Args:
+        cfg: Agent settings.
+        cfg_fp: Fingerprint of the configuration and prompts (see :func:`_config_fingerprint`).
+
+    Returns:
+        A callback that stores the turn only if the lookup of this turn was an eligible miss and the
+        turn finished with a non-empty answer, no tool error and no truncated SQL result. It never
+        raises: a failure to store is logged by exception type and ignored.
+    """
+    rc = cfg.cache.response
+
+    def store_turn(callback_context: CallbackContext) -> None:
+        state = callback_context.state
+        outcome = state.get("cache")
+        if not isinstance(outcome, dict) or outcome.get("response") != "miss" or outcome.get("error"):
+            return None
+        try:
+            question = _question_text(callback_context)
+            fps = _data_fingerprints(state)
+            invocation = getattr(callback_context, "invocation_id", None)
+            events = [e for e in getattr(callback_context.session, "events", None) or [] if e.invocation_id == invocation]
+            summary = _turn_summary(events)
+            if fps is None or summary is None:
+                return None
+            scope_id = _scope_id(callback_context, cfg)
+            vec = _question_vector(question, cfg, scope_id, compute=False) if (rc.semantic or rc.shadow) else None
+            store = _response_store(cfg)
+            qhash = cache_lib.text_hash(question)
+            store.put(
+                (scope_id, RESPONSE_STORE, *fps, cfg_fp, qhash),
+                _ResponseEntry(
+                    qhash[:12], summary[0], state.get("intent"), summary[1],
+                    cache_lib.entity_tokens(question), vec, store.now(),
+                ),
+            )
+        except Exception as exc:
+            logger.warning("response cache: store failed (%s); ignored", type(exc).__name__)
+        return None
+
+    return store_turn
+
+
+def make_build_data(cfg: AgentConfig) -> Callable[[CallbackContext], None]:
+    """Returns the first of the three response-cache callbacks: build the session databases.
+
+    Same work as :func:`make_ensure_data` without the classifier. It replaces ``state["turn_timing"]``
+    with the build stages that ran.
+    """
+
+    def build_data(callback_context: CallbackContext) -> None:
+        stages = _prepare_session(callback_context, cfg)
+        _sweep()
+        _set_timing(callback_context.state, cfg, stages)
+        return None
+
+    return build_data
+
+
+def make_classify(cfg: AgentConfig, intent_prompt: str | None) -> Callable[[CallbackContext], None]:
+    """Returns the last of the three response-cache callbacks: classify the user's message.
+
+    It runs only when the lookup did not answer, and appends the ``intent`` stage to ``turn_timing``.
+    """
+
+    def classify(callback_context: CallbackContext) -> None:
+        elapsed = _classify_turn(callback_context, cfg, intent_prompt)
+        _set_timing(callback_context.state, cfg, [("intent", elapsed)], append=True)
+        return None
+
+    return classify
+
+
 ensure_data = make_ensure_data(AgentConfig())  # default settings; kept importable for tests and tools
 
 
@@ -475,7 +854,9 @@ def build_agent(cfg: AgentConfig) -> Agent:
             when it is not ``None``, so the model default stays the default.
 
     Returns:
-        An ADK ``Agent`` whose before-agent callback is ``make_ensure_data(cfg)``.
+        An ADK ``Agent`` whose before-agent callback is ``make_ensure_data(cfg)``. With
+        ``cfg.cache.response.enabled`` it is the list build, response-cache lookup, classify, and an
+        after-agent callback stores the answered turn.
     """
     instruction, description = _PROFILES[cfg.profile]
     if cfg.instruction_file is not None:
@@ -487,12 +868,19 @@ def build_agent(cfg: AgentConfig) -> Agent:
     extra = {}
     if cfg.model.temperature is not None:
         extra["generate_content_config"] = types.GenerateContentConfig(temperature=cfg.model.temperature)
+    if cfg.cache.response.enabled:
+        intent_prompt = _load_intent_prompt(cfg)
+        cfg_fp = _config_fingerprint(cfg, instruction, intent_prompt)
+        before = [make_build_data(cfg), make_response_lookup(cfg, cfg_fp), make_classify(cfg, intent_prompt)]
+        extra["after_agent_callback"] = make_response_store(cfg, cfg_fp)
+    else:
+        before = make_ensure_data(cfg)  # one callback, exactly as before the caches existed
     return Agent(
         name="qa_orchestrator",
         model=cfg.model.agent,
         description=description,
         instruction=instruction,
-        before_agent_callback=make_ensure_data(cfg),
+        before_agent_callback=before,
         tools=[run_sql, search_documents],
         **extra,
     )
