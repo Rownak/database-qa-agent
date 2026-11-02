@@ -23,6 +23,7 @@ FILES = [
     "app.py",
     "ui_client.py",
     ".streamlit/config.toml",
+    "data_agent/cache.py",
     "data_agent/ingest.py",
     "data_agent/sessions.py",
     "data_agent/doc_ingest.py",

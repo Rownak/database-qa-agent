@@ -40,26 +40,26 @@ Every phase ends with the following (CLAUDE.md):
 
 **Goal:** a repeated or paraphrased first question in a session is answered from cache, without the intent call, model calls or tools (design §4).
 
-- [ ] **Config** (`data_agent/config.py`): `CacheConfig` in `AgentConfig.cache` with a `response` block: `enabled: false`, `semantic: false`, `threshold: 0.97`, `entity_guard: true`, `shadow: false`, `ttl_s: 3600`, `max_entries: 1000`, `scope: session | dataset`.
-- [ ] **Shared cache module** `data_agent/cache.py` (numpy only), reused by 9.3 and 9.5:
+- [x] **Config** (`data_agent/config.py`): `CacheConfig` in `AgentConfig.cache` with a `response` block: `enabled: false`, `semantic: false`, `threshold: 0.97`, `entity_guard: true`, `shadow: false`, `ttl_s: 3600`, `max_entries: 1000`, `scope: session | dataset`.
+- [x] **Shared cache module** `data_agent/cache.py` (numpy only), reused by 9.3 and 9.5:
   - a TTL + LRU store with a lock, and a namespace registry with `drop(scope_id)`
   - fingerprints: `data_fp` and `docs_fp` (sha256, memoised by path, size and mtime) and `cfg_fp` (config, resolved instruction and intent-prompt text, `CACHE_SCHEMA_VERSION`)
   - `normalize` and entity-token extraction
-- [ ] **Lookup and store** (`data_agent/agent.py`):
+- [x] **Lookup and store** (`data_agent/agent.py`):
   - The callback list becomes build → lookup → classify. The lookup checks eligibility (first user turn, no time-relative words, no `load_error`, fingerprints present), then the exact tier, then the semantic tier (embedding, cosine, threshold plus entity guard).
   - A hit returns the stored answer and writes `state["cache"]` with the stored call summary.
   - `after_agent_callback` stores eligible turns: no error, non-empty answer, no tool error or truncation.
   - `shadow` logs the nearest similarity, the guard result and the nearest entry id, and never serves.
   - Entries are dropped when the session closes or is swept.
-- [ ] **Result and trace** (`events.py`, `runner.py`): `TurnResult.cache` as the last field; on a hit, `calls` come from the stored summary so the existing metrics apply. The trace gets a `cache_lookup` setup stage when the lookup ran, and the hit answer is not counted as an `llm` stage.
-- [ ] **Tests:**
+- [x] **Result and trace** (`events.py`, `runner.py`): `TurnResult.cache` as the last field; on a hit, `calls` come from the stored summary so the existing metrics apply. The trace gets a `cache_lookup` setup stage when the lookup ran, and the hit answer is not counted as an `llm` stage.
+- [x] **Tests:**
   - keys and normalisation; exact and semantic hit and miss
   - the guard blocks "client 252" → "client 253"
   - a follow-up (two turns in one fake session) bypasses
   - TTL and LRU; session isolation and `drop`; invalidation by each fingerprint
   - fallback on injected exceptions; off is identical
   - a hit fills `calls`
-- [ ] **Dev script** `phase_9_1.py`: ask one question twice with `scope: dataset` (live) and print miss → hit, latency and `state["cache"]`.
+- [x] **Dev script** `phase_9_1.py`: ask one question twice with `scope: dataset` (live) and print miss → hit, latency and `state["cache"]`.
 
 ## Phase 9.2 — LakeQuest Evaluation: Response Cache
 
