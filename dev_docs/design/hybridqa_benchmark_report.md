@@ -1,4 +1,4 @@
-# HybridQA Benchmark Report
+ # HybridQA Benchmark Report
 
 **Scope:** what the HybridQA repository (`benchmark/HybridQA`) provides for evaluating our database-and-document agent, and the smallest adaptation needed to use it.
 
