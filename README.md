@@ -184,6 +184,33 @@ Hybrid turns are the slow tail (model calls are about two thirds of them). The c
 
 **Caveat:** an internal 40-case sample, descriptive only. Details: [latency_report_lakequest.md](dev_docs/design/latency_report_lakequest.md).
 
+## Caching (Sprint 9)
+
+Three caches, each built and then measured on LakeQuest. Design: [caching_design.md](dev_docs/design/caching_design.md).
+
+- [x] **Response cache:** exact and semantic (embedding) reuse of whole answers, invalidated when data, documents or config change.
+- [ ] **Prefix cache:** stable prompt prefix, to use the provider's own caching.
+- [ ] **Retrieval cache:** reuse of document search results.
+
+### Response cache evaluation (LakeQuest)
+
+94 turns: 40 unique, 20 exact repeats, 20 paraphrases, 10 near misses, 4 stale-data probes. Details: [caching_report.md](dev_docs/design/caching_report.md).
+
+| | No cache | Exact | Exact + semantic (τ 0.95) |
+|---|---|---|---|
+| Exact repeats served from cache | - | 17/20 (~5 ms) | 18/20 |
+| Paraphrases served from cache | - | 0/20 | 13/20 (~0.3 s) |
+| Near misses / stale probes served | - | 0 / 0 | 0 / 0 |
+| Input tokens | 2.04 M | 1.75 M | 1.47 M |
+| Total latency | 352 s | 288 s | 264 s |
+
+- Both safety gates hold: no wrong or stale answer was served.
+- The semantic tier pays for itself here (13.8 % extra hits vs a ~9.7 % break-even), but only if paraphrases are over about 10 % of traffic.
+- Threshold 0.95 serves 13 paraphrases against 8 at the 0.97 default; the default is not changed yet.
+- Open: time-relative wording ("recent") bypasses 16 % of turns, and the entity guard misses hyphenated policy ids.
+
+**Caveat:** one run per arm on a synthetic repeat mix, so hit rates are not production traffic.
+
 ## Deployment status and next steps
 
 **Demonstrated GCP deployment:** Two Cloud Run services: a private ADK API (`data-qa-api`) and a public Streamlit UI (`data-qa-ui`) that invokes it using a service account. The API key is stored as a secret. Deployment instructions are in [GCP setup](db-doc-qa/dev_docs/deploy/phase_2_1_gcp_setup.md) and [deployment guide](db-doc-qa/dev_docs/deploy/deploy.md). These links assume this README is at the repository root.
