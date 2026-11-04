@@ -229,3 +229,6 @@ benchmark/
 
 # Evaluation outputs (python -m evals)
 db-doc-qa/runs/
+
+# tutorial files
+dev_docs/tutorial/
