@@ -226,6 +226,18 @@ Three caches, each built and then measured on LakeQuest. Design: [caching_design
 
 **Caveat:** one run per arm on a synthetic repeat mix, so hit rates are not production traffic.
 
+## ADK tool evaluation (Sprint 10)
+
+A regression test of which tools the agent calls, using native ADK eval sets in `db-doc-qa/evals/adk/` (9 shipment cases: `routing` is an exact match, `hybrid` an in-order match) plus a custom check that the SQL/search arguments contain the expected fragments. Design: [adk_tool_evaluation_design.md](dev_docs/design/adk_tool_evaluation_design.md).
+
+```bash
+# from db-doc-qa/; needs the API key and `uv sync` (dev group includes google-adk[eval])
+RUN_ADK_EVAL=1 uv run pytest tests/test_adk_eval.py -v   # opt-in gate, 3 runs per case, billed
+uv run python -m dev_test.phase_10_3                     # scorecard from data_agent/.adk/eval_history
+```
+
+A plain `uv run pytest` skips the live gate. Rerun after any change to the instruction, tool docstrings, intent prompt or model. **Status:** the sets and tests are built; live runs are pending (Gemini credits exhausted), so no pass rate is reported yet.
+
 ## Deployment status and next steps
 
 **Demonstrated GCP deployment:** Two Cloud Run services: a private ADK API (`data-qa-api`) and a public Streamlit UI (`data-qa-ui`) that invokes it using a service account. The API key is stored as a secret. Deployment instructions are in [GCP setup](db-doc-qa/dev_docs/deploy/phase_2_1_gcp_setup.md) and [deployment guide](db-doc-qa/dev_docs/deploy/deploy.md). These links assume this README is at the repository root.
