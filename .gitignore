@@ -230,5 +230,8 @@ benchmark/
 # Evaluation outputs (python -m evals)
 db-doc-qa/runs/
 
+# ADK eval history and dev sessions (adk eval / adk web)
+db-doc-qa/data_agent/.adk/
+
 # tutorial files
 dev_docs/tutorial/

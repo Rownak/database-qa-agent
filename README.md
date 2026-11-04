@@ -116,6 +116,21 @@ The summary prints a `stage p50` line and per-tag latency. Each `results.jsonl` 
 
 **Embedding rate limits:** indexing many documents for a benchmark can hit the Gemini embedding rate limit (`ClientError`, retrieval falls back to BM25 only). For evaluation, the run config can choose a local Ollama embedding model instead (`agent.embedding.provider: ollama`, `model: nomic-embed-text:latest`, see `configs/eval/hybridqa_dev50_ollama.yaml`; needs `ollama pull nomic-embed-text`). The default stays Gemini, and a bundle must be rebuilt when the provider changes.
 
+### ADK tool evaluation
+
+A regression test of which tools the agent calls, built from native ADK eval sets (`db-doc-qa/evals/adk/`: `routing` is an exact match, `hybrid` an in-order match; tool names only, scored by `tool_trajectory_avg_score`). It needs the API key and the dev dependencies (`uv sync`), and costs model calls.
+
+```bash
+# pytest gate: each set runs 3 times and every case must match every time (opt-in, billed)
+RUN_ADK_EVAL=1 uv run pytest tests/test_adk_eval.py -v
+
+# ADK CLI, one eval set at a time (results go to data_agent/.adk/eval_history)
+PYTHONPATH=. DATA_AGENT_CONFIG=configs/eval/smoke.yaml uv run adk eval data_agent \
+  evals/adk/routing/routing.test.json --config_file_path evals/adk/routing/test_config.json --print_detailed_results
+```
+
+`uv run python -m dev_test.phase_10_3` prints a scorecard (trajectory and argument scores per case, worst run) from the saved results. A plain `uv run pytest` skips the live tests. Rerun after any change to the agent instruction, a tool's name, signature or docstring, the intent prompt, or the model version. Design: [adk_tool_evaluation_design.md](dev_docs/design/adk_tool_evaluation_design.md).
+
 ## Evaluation
 
 ### [HybridQA Dataset](https://github.com/wenhuchen/HybridQA)

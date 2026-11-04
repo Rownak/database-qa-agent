@@ -29,47 +29,47 @@ Every phase ends with the following (CLAUDE.md):
 
 **Goal:** the two eval sets from design §4 run from the ADK CLI and pass, with full results in `.adk/eval_history`.
 
-- [ ] **Eval-ready check:** confirm `uv run adk web .` lists `data_agent` (`__init__.py` → `agent.py` → `root_agent`). Ask one demo question and look at its tool calls in the trace viewer.
-- [ ] **Capture one case in `adk web`:** answer "Where is shipment 12345?", save it as an eval case from the Eval tab, and compare the generated JSON with the format in the design. Use it as the template for the hand-written cases.
-- [ ] **`evals/adk/routing/`:**
+- [ ] **Eval-ready check** (listing done; the question is blocked by the exhausted Gemini credits, see the log): confirm `uv run adk web .` lists `data_agent` (`__init__.py` → `agent.py` → `root_agent`). Ask one demo question and look at its tool calls in the trace viewer.
+- [ ] **Capture one case in `adk web`** (blocked: live model call): answer "Where is shipment 12345?", save it as an eval case from the Eval tab, and compare the generated JSON with the format in the design. Use it as the template for the hand-written cases.
+- [x] **`evals/adk/routing/`:**
   - `routing.test.json` with `db_location`, `db_count_delayed`, `doc_express_threshold`, and `refuse_write` (empty `tool_uses`: the baseline "no tool" behaviour)
   - `test_config.json`: `tool_trajectory_avg_score` with `{threshold: 1.0, match_type: EXACT, ignore_args: true}`, and no `response_match_score`
-- [ ] **`evals/adk/hybrid/`:**
+- [x] **`evals/adk/hybrid/`:**
   - `hybrid.test.json` with `hybrid_delayed_express`, `conflict_international`, `no_policy_refrigerated`, `record_not_found`, and `threshold_first`
   - `test_config.json` as in `routing`, but with `match_type: IN_ORDER`
-- [ ] **Golden args:** fill each golden call's `args` with key fragments (for example `{"query": "12345"}`). Built-in scoring ignores them; 10.3 reads them.
-- [ ] **`.gitignore`:** add `data_agent/.adk/`.
-- [ ] **Run both sets** with `adk eval … --config_file_path … --print_detailed_results`. Record pass/fail per case in the execution log.
-- [ ] **Tests (offline)** `tests/test_adk_evalsets.py`:
+- [x] **Golden args:** fill each golden call's `args` with key fragments (for example `{"query": "12345"}`). Built-in scoring ignores them; 10.3 reads them.
+- [x] **`.gitignore`:** add `data_agent/.adk/`.
+- [ ] **Run both sets** (blocked: live model calls) with `PYTHONPATH=. adk eval … --config_file_path … --print_detailed_results`. Record pass/fail per case in the execution log.
+- [x] **Tests (offline)** `tests/test_adk_evalsets.py`:
   - every `*.test.json` validates as ADK `EvalSet`, and every `test_config.json` as ADK `EvalConfig`
   - eval ids are unique, and every golden tool name is a tool of `root_agent`
   - `refuse_write` is in the EXACT set (an empty golden list matches anything under IN_ORDER)
-- [ ] **Dev script** `phase_10_1.py`: print each case's id, question and golden tool sequence.
+- [x] **Dev script** `phase_10_1.py`: print each case's id, question and golden tool sequence.
 
 ## Phase 10.2 — Regression Gate in pytest
 
 **Goal:** one pytest command runs both eval sets several times, so tool routing can be checked after any change to the instruction, tools, intent prompt or model.
 
-- [ ] **`tests/test_adk_eval.py`:** one async test per folder that calls `AgentEvaluator.evaluate("data_agent", "evals/adk/<set>", num_runs=3)`. It sets `DATA_AGENT_CONFIG` to `smoke.yaml` before the agent module is imported, and is skipped without `GOOGLE_API_KEY`.
-- [ ] **Confirm the default suite stays offline:** `uv run pytest` passes and reports the live tests as skipped.
-- [ ] **Flakiness record:** run the gate three times. In the execution log, list any case that does not score 1.0 every time, with its actual trajectory from `eval_history`.
-- [ ] **README:** a short "ADK tool evaluation" subsection with the CLI and pytest commands, and when to rerun them.
-- [ ] **Dev script** `phase_10_2.py`: run the routing set once through `AgentEvaluator` and print pass/fail.
+- [x] **`tests/test_adk_eval.py`:** one test per folder (a sync test that wraps `asyncio.run`, as the repo does; there is no pytest-asyncio) that calls `AgentEvaluator.evaluate("data_agent", "evals/adk/<set>", num_runs=3)`. A fixture swaps in the agent built from `smoke.yaml`, because the module may already be imported with default settings. The live tests are opt-in with `RUN_ADK_EVAL=1` (and need `GOOGLE_API_KEY`), because the key is in `.env` and "skip without a key" would call the API on every `uv run pytest`.
+- [x] **Confirm the default suite stays offline:** `uv run pytest` passes and reports the live tests as skipped.
+- [ ] **Flakiness record** (blocked: exhausted Gemini credits): run the gate (`num_runs=3` already repeats each case three times; one gate run is enough). In the execution log, list any case that does not score 1.0 in every run, with its actual trajectory from `eval_history`.
+- [x] **README:** a short "ADK tool evaluation" subsection with the CLI and pytest commands, and when to rerun them.
+- [x] **Dev script** `phase_10_2.py`: run the routing set once through `AgentEvaluator` and print pass/fail.
 
 ## Phase 10.3 — Argument Correctness and Scorecard
 
 **Goal:** check that the right values reach the tools without matching the model's exact SQL, and summarise the eval history.
 
-- [ ] **Custom metric** `evals/adk/metrics.py::tool_args_contain`: it uses the ADK custom-metric signature and returns `EvaluationResult`.
+- [x] **Custom metric** `evals/adk/metrics.py::tool_args_contain`: it uses the ADK custom-metric signature and returns `EvaluationResult`.
   - It pairs each golden call with an actual call of the same name, in order.
   - A call scores 1.0 when every golden arg value is a case-insensitive substring of the actual arg.
-- [ ] **Register the metric** in both `test_config.json` files under `custom_metrics` (`code_config.name: evals.adk.metrics.tool_args_contain`), with threshold 1.0.
-- [ ] **Tests (offline)** `tests/test_adk_metrics.py`:
+- [x] **Register the metric** in both `test_config.json` files under `custom_metrics` (`code_config.name: evals.adk.metrics.tool_args_contain`), with threshold 1.0.
+- [x] **Tests (offline)** `tests/test_adk_metrics.py`:
   - build `Invocation` objects by hand; a matching fragment passes, and a missing fragment or a missing call fails
   - check matching on extra calls and on an empty golden list
-- [ ] **Run both sets** with the new metric and record the results. Note any case where the tool order passes but the arguments fail.
-- [ ] **Dev script** `phase_10_3.py` (scorecard): read the latest files in `data_agent/.adk/eval_history/` and print a case × metric table (trajectory score, args score, pass/fail).
-- [ ] **Design doc:** update `adk_tool_evaluation_design.md` with anything learned (format details, flaky cases).
+- [ ] **Run both sets** (blocked: exhausted Gemini credits) with the new metric and record the results. Note any case where the tool order passes but the arguments fail.
+- [x] **Dev script** `phase_10_3.py` (scorecard): read the latest files in `data_agent/.adk/eval_history/` and print a case × metric table (trajectory score, args score, pass/fail).
+- [x] **Design doc:** update `adk_tool_evaluation_design.md` with anything learned (format details, flaky cases).
 
 ---
 

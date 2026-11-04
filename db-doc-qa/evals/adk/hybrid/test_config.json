@@ -1,0 +1,18 @@
+{
+  "criteria": {
+    "tool_trajectory_avg_score": {
+      "threshold": 1.0,
+      "match_type": "IN_ORDER",
+      "ignore_args": true
+    },
+    "tool_args_contain": 1.0
+  },
+  "custom_metrics": {
+    "tool_args_contain": {
+      "code_config": {
+        "name": "evals.adk.metrics.tool_args_contain"
+      },
+      "description": "Each golden tool call was made with arguments containing the golden fragments."
+    }
+  }
+}

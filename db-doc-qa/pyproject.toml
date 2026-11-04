@@ -22,6 +22,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "fpdf2>=2.8.9",
+    "google-adk[eval]>=2.12.0",
     "pytest>=9.1.1",
 ]
 [tool.pytest.ini_options]

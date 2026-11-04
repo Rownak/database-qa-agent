@@ -16,7 +16,7 @@ Out of scope: answer-text scoring (the existing harness does this with `answer_c
 | One fixed SOP path | Instruction rule 1 says a single-intent question calls one tool only; rule 2 allows an extra unfiltered search on hybrid questions | Two eval sets: **EXACT** for single-intent cases, **IN_ORDER** for hybrid cases |
 | Mock catalog JSON | `shipments.csv` + 3 policy docs, loaded by `ensure_data` when the session state is empty | `session_input.state: {}` is enough; no fixtures |
 
-Argument correctness (the tutorial's second concern) is covered by an **optional** small custom metric (§5) that checks for key fragments, not full strings.
+Argument correctness (the tutorial's second concern) is covered by a small custom metric (§5) that checks for key fragments, not full strings.
 
 ## 3. Proposed files (minimal; no changes to agent code)
 
@@ -28,8 +28,9 @@ db-doc-qa/evals/adk/
   hybrid/
     hybrid.test.json       # cases that need SQL and documents
     test_config.json       # IN_ORDER, names only
-  metrics.py               # optional: tool_args_contain custom metric (§5)
-db-doc-qa/tests/test_adk_eval.py   # live pytest wrapper, skipped without GOOGLE_API_KEY
+  __init__.py, metrics.py  # tool_args_contain custom metric (§5)
+db-doc-qa/tests/test_adk_eval.py   # live pytest wrapper, opt-in with RUN_ADK_EVAL=1
+db-doc-qa/dev_test/phase_10_3.py   # scorecard over data_agent/.adk/eval_history (§7)
 .gitignore                         # + data_agent/.adk/
 ```
 
@@ -88,7 +89,11 @@ Example case (the format from the tutorial; `args` holds key fragments, which th
 ```json
 {
   "criteria": {
-    "tool_trajectory_avg_score": {"threshold": 1.0, "match_type": "EXACT", "ignore_args": true}
+    "tool_trajectory_avg_score": {"threshold": 1.0, "match_type": "EXACT", "ignore_args": true},
+    "tool_args_contain": 1.0
+  },
+  "custom_metrics": {
+    "tool_args_contain": {"code_config": {"name": "evals.adk.metrics.tool_args_contain"}}
   }
 }
 ```
@@ -96,7 +101,13 @@ Example case (the format from the tutorial; `args` holds key fragments, which th
 - `response_match_score` is left out, so no text comparison runs (the tutorial sets it to 0.0 for the same reason).
 - Threshold 1.0: every case must match its golden trajectory.
 
-**Optional: argument check.** `evals/adk/metrics.py::tool_args_contain(eval_metric, actual_invocations, expected_invocations, conversation_scenario) -> EvaluationResult`. For each golden call, find the matching actual call by name and order, then score 1.0 when every expected arg value is a case-insensitive substring of the actual arg (for example, the SQL contains `12345`). It is registered through `custom_metrics.<name>.code_config.name = "evals.adk.metrics.tool_args_contain"` with threshold 1.0. This keeps arg checks deterministic without depending on the exact SQL the model writes.
+**Argument check.** `evals/adk/metrics.py::tool_args_contain(eval_metric, actual_invocations, expected_invocations, conversation_scenario) -> EvaluationResult`. The golden calls are taken in order; each is matched with the first later actual call of the same name whose arguments contain all its fragments (case-insensitive substrings, for example the SQL contains `12345`). A call of that name with other arguments, such as a first SQL attempt that was then corrected, is skipped. The score is the share of golden calls matched; an empty golden list scores 1.0 (calls that should not happen are the trajectory metric's job). This keeps argument checks deterministic without depending on the exact SQL the model writes.
+
+How ADK treats a custom metric (found while building it):
+- ADK clears the metric's own `threshold` before calling the function, so the function sets pass/fail itself and reads the threshold from `eval_metric.criterion` (1.0 if absent).
+- It must return exactly one per-invocation result per actual invocation; any other count raises a hard error. An invocation without a golden counterpart is `NOT_EVALUATED`.
+- ADK always appends four informational metrics (tool call count, inference call count, token usage, invocation duration) to every result. They never pass or fail, and the scorecard leaves them out.
+- The metric is loaded by dotted path, so `adk eval` needs `PYTHONPATH=.` (see §7).
 
 ## 6. Determinism
 
@@ -107,26 +118,29 @@ Example case (the format from the tutorial; `args` holds key fragments, which th
 
 ## 7. How to run
 
-From `db-doc-qa/`, with `GOOGLE_API_KEY` in `.env`. Bash syntax; in PowerShell, set the variable with `$env:DATA_AGENT_CONFIG="configs/eval/smoke.yaml"` first.
+From `db-doc-qa/`, with `GOOGLE_API_KEY` in `.env` and the dev dependencies installed (`google-adk[eval]` is in the `dev` group; `uv sync` installs it). Bash syntax; in PowerShell, set `$env:PYTHONPATH="."` and `$env:DATA_AGENT_CONFIG="configs/eval/smoke.yaml"` first. `PYTHONPATH=.` is needed because `adk eval` imports the package by file path and does not add `db-doc-qa/` to the import path (`adk web .` and pytest do).
 
 ```bash
 # CLI: one command per eval set (each uses its own config)
-DATA_AGENT_CONFIG=configs/eval/smoke.yaml uv run adk eval data_agent \
+PYTHONPATH=. DATA_AGENT_CONFIG=configs/eval/smoke.yaml uv run adk eval data_agent \
   evals/adk/routing/routing.test.json \
   --config_file_path evals/adk/routing/test_config.json --print_detailed_results
 
-DATA_AGENT_CONFIG=configs/eval/smoke.yaml uv run adk eval data_agent \
+PYTHONPATH=. DATA_AGENT_CONFIG=configs/eval/smoke.yaml uv run adk eval data_agent \
   evals/adk/hybrid/hybrid.test.json \
   --config_file_path evals/adk/hybrid/test_config.json --print_detailed_results
 
-# pytest / CI: AgentEvaluator.evaluate("data_agent", "evals/adk/<set>") per folder
-uv run pytest tests/test_adk_eval.py -v
+# pytest / CI: AgentEvaluator.evaluate("data_agent", "evals/adk/<set>", num_runs=3) per folder (opt-in, billed)
+RUN_ADK_EVAL=1 uv run pytest tests/test_adk_eval.py -v
+
+# Scorecard: newest result per eval set, one row per case (worst run), trajectory and args scores
+uv run python -m dev_test.phase_10_3
 
 # Interactive: open adk web, pick data_agent, load the eval set under the Eval tab
 uv run adk web .
 ```
 
-Results: pass/fail per case on stdout. Full trajectories and scores go to `data_agent/.adk/eval_history/*.json` (timestamped); a later scorecard can parse these files.
+Results: pass/fail per case on stdout. Full trajectories and scores go to `data_agent/.adk/eval_history/<app>_<eval_set_id>_<timestamp>.evalset_result.json` (an `EvalSetResult`; a case run `num_runs` times has that many entries). The scorecard reads these files. An API failure (for example HTTP 402) is recorded as a failed case with no metric scores, which the scorecard marks "no scores" so it is not mistaken for a routing failure.
 
 Rerun after any change to `INSTRUCTION`, tool docstrings or signatures, the intent prompt, or the model version.
 
@@ -134,4 +148,5 @@ Rerun after any change to `INSTRUCTION`, tool docstrings or signatures, the inte
 
 - Names-only scoring cannot tell a correct SQL query from a wrong one; §5 checks fragments only, and answer correctness stays with `python -m evals`.
 - Under EXACT, a legitimate SQL retry (rule 11) fails the case. Questions in `routing` are kept simple so that a retry is rare, and a failure there is worth a look anyway.
-- Live model calls make this suite slow and billed, so it is skipped in the default offline `uv run pytest`.
+- Live model calls make this suite slow and billed, so it is opt-in (`RUN_ADK_EVAL=1`) and skipped in the default offline `uv run pytest`. A key-only skip condition is not enough, because the key is normally in `.env`.
+- The golden argument fragments are provisional until both sets have run against the real model; a fragment the model words differently (for example `delay` vs `delayed`) shows as "tools right, arguments wrong" in the scorecard and should be loosened, not the prompt tuned.
