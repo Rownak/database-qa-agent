@@ -1,0 +1,95 @@
+{
+  "eval_set_id": "regression_cache",
+  "name": "regression_cache",
+  "description": "Regression cases run with the session-scoped response cache on.",
+  "eval_cases": [
+    {
+      "eval_id": "reg_followup_not_cached",
+      "conversation": [
+        {
+          "invocation_id": "inv_001",
+          "user_content": {
+            "role": "user",
+            "parts": [
+              {
+                "text": "How many shipments are delayed?"
+              }
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": ""
+              }
+            ]
+          },
+          "intermediate_data": {
+            "intermediate_responses": [],
+            "tool_uses": [
+              {
+                "name": "run_sql",
+                "args": {
+                  "query": "Delayed"
+                }
+              }
+            ]
+          },
+          "rubrics": [
+            {
+              "rubric_id": "answer_contains_1",
+              "rubric_content": {
+                "text_property": "9"
+              },
+              "type": "ANSWER_CONTAINS"
+            }
+          ]
+        },
+        {
+          "invocation_id": "inv_002",
+          "user_content": {
+            "role": "user",
+            "parts": [
+              {
+                "text": "How many shipments are delayed?"
+              }
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": ""
+              }
+            ]
+          },
+          "intermediate_data": {
+            "intermediate_responses": [],
+            "tool_uses": [
+              {
+                "name": "run_sql",
+                "args": {
+                  "query": "Delayed"
+                }
+              }
+            ]
+          },
+          "rubrics": [
+            {
+              "rubric_id": "answer_contains_1",
+              "rubric_content": {
+                "text_property": "9"
+              },
+              "type": "ANSWER_CONTAINS"
+            }
+          ]
+        }
+      ],
+      "session_input": {
+        "app_name": "data_agent",
+        "user_id": "evaluator",
+        "state": {}
+      }
+    }
+  ]
+}

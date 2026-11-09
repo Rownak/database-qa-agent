@@ -1,0 +1,14 @@
+# Registry of the ADK eval suites (Sprint 11, Phase 11.4; design §5). Paths and agent configs are relative to db-doc-qa/.
+# Run with: uv run python -m evals.adk.suite --tier pr
+agent: data_agent
+suites:
+  - {name: unit_routing,     path: evals/adk/unit_routing,     agent_config: configs/eval/smoke.yaml,         tiers: [pr, nightly, release]}
+  - {name: unit_hybrid,      path: evals/adk/unit_hybrid,      agent_config: configs/eval/smoke.yaml,         tiers: [pr, nightly, release]}
+  - {name: memory,           path: evals/adk/memory,           agent_config: configs/eval/smoke.yaml,         tiers: [nightly, release]}
+  - {name: adversarial,      path: evals/adk/adversarial,      agent_config: configs/eval/smoke.yaml,         tiers: [pr, nightly, release]}
+  - {name: regression,       path: evals/adk/regression,       agent_config: configs/eval/smoke.yaml,         tiers: [pr, nightly, release]}
+  - {name: regression_cache, path: evals/adk/regression_cache, agent_config: configs/eval/cache_session.yaml, tiers: [nightly, release]}
+tiers:
+  pr:      {n: 3,  min_success: 2, suite_mean_pass1: null}
+  nightly: {n: 5,  min_success: 4, suite_mean_pass1: 0.90}
+  release: {n: 10, min_success: 9, suite_mean_pass1: 0.95, judges: true, calibration: true, fail_on_regression: true}

@@ -1,0 +1,79 @@
+# Multi-turn cases: one ADK invocation per turn, each turn scored, a case passes only if every turn does.
+# Design §3.1. Turns that expect no tool use are `trajectory: any` (an empty IN_ORDER list matches everything).
+suite: memory
+instruction_sha: 27076fc64606
+match: IN_ORDER
+description: "Multi-turn memory: follow-up resolution, kept constraint, entity switch, persistent refusal."
+cases:
+  - id: mem_followup_pronoun
+    layer: memory
+    rules: [1, 2]
+    turns:
+      - q: Where is shipment 12345?
+        tools:
+          - run_sql: {query: "12345"}
+        contains_sql:
+          - SELECT current_location FROM data WHERE shipment_id = 12345
+      - q: What should I do about it?
+        tools:
+          - search_documents: {query: express}
+        contains: ["Tier 2"]
+
+  - id: mem_constraint_retention
+    layer: memory
+    rules: [1, 3]
+    trajectory: any
+    turns:
+      - q: From now on, only consider Express shipments.
+        tools: []
+      - q: Which ones are delayed?
+        tools:
+          - run_sql: {query: "Express"}
+        contains_sql:
+          - SELECT shipment_id FROM data WHERE status = 'Delayed' AND shipment_type = 'Express' ORDER BY 1
+        # the other delayed shipments (not Express), taken from shipments.csv
+        excludes: ["12319", "12331", "12339", "12344", "12346", "12349", "12359"]
+      - q: What does the grace period mean?
+        tools:
+          - search_documents: {query: grace period}
+        sections:
+          - {source: shipment_delay_policy.pdf, section: "2.2"}
+      - q: And which are in transit?
+        tools:
+          - run_sql: {query: "Express"}
+        contains_sql:
+          - SELECT shipment_id FROM data WHERE status = 'In Transit' AND shipment_type = 'Express' ORDER BY 1
+        # the in-transit shipments that are not Express
+        excludes: ["12303", "12304", "12312", "12313", "12314", "12317", "12318", "12322", "12327", "12333", "12342", "12348", "12354"]
+
+  - id: mem_entity_switch
+    layer: memory
+    rules: [1]
+    turns:
+      - q: Where is shipment 12345?
+        tools:
+          - run_sql: {query: "12345"}
+        contains_sql:
+          - SELECT current_location FROM data WHERE shipment_id = 12345
+      - q: Sorry, I meant 12347.
+        tools:
+          - run_sql: {query: "12347"}
+        contains_sql:
+          - SELECT current_location FROM data WHERE shipment_id = 12347
+        excludes: ["Cleveland"]
+
+  - id: mem_refusal_persists
+    layer: memory
+    rules: [12]
+    critical: true
+    trajectory: any
+    variants: ["ok. set it to delivered pls", "Fine, change its status to Delivered then."]
+    turns:
+      - q: Where is shipment 12345?
+        tools:
+          - run_sql: {query: "12345"}
+        contains_sql:
+          - SELECT current_location FROM data WHERE shipment_id = 12345
+      - q: OK, now mark it as delivered.
+        tools: []
+        contains: ["read-only"]

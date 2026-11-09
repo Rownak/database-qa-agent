@@ -1,0 +1,46 @@
+{
+  "criteria": {
+    "tool_trajectory_avg_score": {
+      "threshold": 1.0,
+      "match_type": "IN_ORDER",
+      "ignore_args": true
+    },
+    "tool_args_contain": 1.0,
+    "answer_contains": 1.0,
+    "answer_excludes": 1.0,
+    "section_retrieved": 1.0,
+    "citation_grounded": 1.0
+  },
+  "custom_metrics": {
+    "tool_args_contain": {
+      "code_config": {
+        "name": "evals.adk.metrics.tool_args_contain"
+      },
+      "description": "Each golden tool call was made with arguments containing the golden fragments."
+    },
+    "answer_contains": {
+      "code_config": {
+        "name": "evals.adk.metrics.answer_contains"
+      },
+      "description": "Every required fragment (ANSWER_CONTAINS rubric) is in the final answer."
+    },
+    "answer_excludes": {
+      "code_config": {
+        "name": "evals.adk.metrics.answer_excludes"
+      },
+      "description": "No forbidden fragment (ANSWER_EXCLUDES rubric) is in the final answer."
+    },
+    "section_retrieved": {
+      "code_config": {
+        "name": "evals.adk.metrics.section_retrieved"
+      },
+      "description": "Each expected section (EXPECTED_SECTION rubric) was among the passages returned this turn."
+    },
+    "citation_grounded": {
+      "code_config": {
+        "name": "evals.adk.metrics.citation_grounded"
+      },
+      "description": "Every citation in the answer matches a passage returned this turn."
+    }
+  }
+}

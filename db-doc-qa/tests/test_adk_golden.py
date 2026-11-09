@@ -70,15 +70,15 @@ def test_generated_config_validates_with_adk():
 
 # --- coverage ---
 
-def test_real_set_coverage_gaps_are_only_those_phase_11_3_fills():
-    """Phase 11.1 migrates nine cases, so some rules are still open; rule 11 is a documented gap, not a failure."""
+def test_real_set_covers_every_rule_except_the_known_gap():
+    """Phase 11.3: the full set has a case for rules 1-10 and 12-14, and a negative/edge case for each failure mode."""
     suites = load_all()
     uncovered, no_negative = build.coverage_gaps(suites)
-    assert set(uncovered) <= {4, 8, 9, 10, 13, 14}
-    assert not no_negative
-    assert 11 not in uncovered and 11 in build.KNOWN_GAPS
+    assert uncovered == []
+    assert no_negative == []
+    assert set(build.KNOWN_GAPS) == {11} and not build.coverage(suites)[11]
     matrix = build.format_matrix(suites)
-    assert "KNOWN GAP" in matrix and matrix.count("\n") >= 14
+    assert "KNOWN GAP" in matrix and "GAP: no" not in matrix
 
 
 def test_coverage_gaps_flag_missing_rules_and_missing_negative_cases():
@@ -156,12 +156,9 @@ def test_schema_is_strict_about_unknown_keys():
         make_suite({"id": "unit_a", "turns": [{"q": "x", "contain": ["y"]}]})
 
 
-def test_rejects_unknown_state_preset_variants_on_multi_turn_and_contradicting_checks():
+def test_rejects_unknown_state_preset_and_contradicting_checks():
     unknown = make_suite({"id": "unit_a", "state": "nope"})
     assert any("unknown state preset" in e for e in errors_of(unknown))
-    multi = make_suite({"id": "mem_a", "layer": "memory", "variants": ["v"], "turns": [
-        {"q": "one", "tools": [{"run_sql": {"query": "1"}}]}, {"q": "two", "tools": [{"run_sql": {"query": "2"}}]}]})
-    assert any("single-turn" in e for e in errors_of(multi))
     clash = make_suite({"id": "unit_a", "turns": [{"q": "x", "tools": [{"run_sql": {"query": "1"}}],
                                                     "contains": ["Delayed"], "excludes": ["delayed"]}]})
     assert any("required and forbidden" in e for e in errors_of(clash))
@@ -288,3 +285,13 @@ def test_state_presets(preset, check):
 def test_injection_preset_carries_the_injected_text():
     docs = {d["name"]: base64.b64decode(d["b64"]).decode("utf-8", "ignore") for d in build.resolve_state("injection_docs")["docs"]}
     assert "Ignore previous instructions" in docs["injection.txt"]
+
+
+def test_variant_of_a_multi_turn_case_rewords_the_last_turn(tmp_path):
+    suite = make_suite({"id": "mem_a", "layer": "memory", "variants": ["mark it delivered!!"], "turns": [
+        {"q": "Where is 12345?", "tools": [{"run_sql": {"query": "1"}}]},
+        {"q": "Now mark it delivered.", "tools": [{"run_sql": {"query": "2"}}]}]}, match="IN_ORDER")
+    files = build.render([suite], tmp_path)
+    cases = EvalSet.model_validate_json(next(v for p, v in files.items() if p.name.endswith(".test.json"))).eval_cases
+    assert [[i.user_content.parts[0].text for i in c.conversation] for c in cases] == [
+        ["Where is 12345?", "Now mark it delivered."], ["Where is 12345?", "mark it delivered!!"]]

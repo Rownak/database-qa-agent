@@ -1,28 +1,24 @@
-"""Regression gate for the agent's tool use: ADK ``AgentEvaluator`` over ``evals/adk/`` (Sprint 10, Phase 10.2).
+"""Pytest wrapper of the pr-tier gate (Sprint 10, Phase 10.2; since Sprint 11, Phase 11.4 a wrapper of ``evals.adk.suite``).
 
-Each eval set is run ``NUM_RUNS`` times against the real model; a case must match its golden tool
-trajectory in every run. These tests call the Gemini API (billed), so they are **opt-in**:
+The live test runs ``suite.main(["--tier", "pr"])``: every pr suite, ``n`` runs per case, one verdict. It calls
+the Gemini API (billed), so it is **opt-in**:
 set ``RUN_ADK_EVAL=1`` (and have ``GOOGLE_API_KEY`` available). The key normally sits in ``.env``, which
 ``data_agent.agent`` loads at import, so "skip without a key" alone would make every ``uv run pytest``
 call the API. The offline test below always runs and checks the setup the gate depends on.
 """
 
-import asyncio
 import os
 from pathlib import Path
 
 import pytest
-from google.adk.evaluation.agent_evaluator import AgentEvaluator
-from google.adk.evaluation.local_eval_set_results_manager import LocalEvalSetResultsManager
 
 import data_agent.agent as agent_module  # imported first: it loads .env, which the skip condition below reads
 from data_agent.agent import build_agent
 from data_agent.config import load_agent_config
+from evals.adk import suite
 
 ROOT = Path(__file__).resolve().parent.parent  # db-doc-qa/
-ADK_DIR = ROOT / "evals" / "adk"
 SMOKE_CONFIG = ROOT / "configs" / "eval" / "smoke.yaml"
-NUM_RUNS = 3
 
 live = pytest.mark.skipif(
     not (os.environ.get("RUN_ADK_EVAL") == "1" and os.environ.get("GOOGLE_API_KEY")),
@@ -52,16 +48,17 @@ def test_smoke_fixture_applies_eval_settings(smoke_agent):
 
 
 @live
-@pytest.mark.parametrize("folder", ["unit_routing", "unit_hybrid"])
-def test_tool_trajectory(folder, smoke_agent):
-    """Every case of the eval set matches its golden trajectory in all ``NUM_RUNS`` runs."""
-    history = LocalEvalSetResultsManager(str(ROOT))  # writes data_agent/.adk/eval_history, as `adk eval` does
-    asyncio.run(
-        AgentEvaluator.evaluate(
-            "data_agent",
-            str(ADK_DIR / folder),
-            num_runs=NUM_RUNS,
-            app_name="data_agent",
-            eval_set_results_manager=history,
-        )
-    )
+def test_pr_gate():
+    """The ``pr`` tier of the suite registry passes: the same gate as ``uv run python -m evals.adk.suite --tier pr``.
+
+    The report is written to ``runs/adk/`` (git-ignored); the exit code is the verdict (0 PASS, 1 FAIL, 2 INVALID).
+    """
+    assert suite.main(["--tier", "pr"]) == 0
+
+
+def test_gate_wraps_the_pr_tier():
+    """Offline: the wrapper runs the registry's ``pr`` suites, none of which needs a different agent config."""
+    registry = suite.load_registry()
+    names = [s.name for s in suite.select(registry, "pr")]
+    assert names == ["unit_routing", "unit_hybrid", "adversarial", "regression"]
+    assert {s.agent_config for s in suite.select(registry, "pr")} == {"configs/eval/smoke.yaml"}

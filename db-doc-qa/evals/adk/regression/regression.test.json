@@ -1,0 +1,54 @@
+{
+  "eval_set_id": "regression",
+  "name": "regression",
+  "description": "Regression cases, one per fixed bug.",
+  "eval_cases": [
+    {
+      "eval_id": "reg_empty_state_build",
+      "conversation": [
+        {
+          "invocation_id": "inv_001",
+          "user_content": {
+            "role": "user",
+            "parts": [
+              {
+                "text": "How many shipments are there?"
+              }
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": ""
+              }
+            ]
+          },
+          "intermediate_data": {
+            "intermediate_responses": [],
+            "tool_uses": [
+              {
+                "name": "run_sql",
+                "args": {}
+              }
+            ]
+          },
+          "rubrics": [
+            {
+              "rubric_id": "answer_contains_1",
+              "rubric_content": {
+                "text_property": "60"
+              },
+              "type": "ANSWER_CONTAINS"
+            }
+          ]
+        }
+      ],
+      "session_input": {
+        "app_name": "data_agent",
+        "user_id": "evaluator",
+        "state": {}
+      }
+    }
+  ]
+}

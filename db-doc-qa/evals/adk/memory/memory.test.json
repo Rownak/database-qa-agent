@@ -1,0 +1,751 @@
+{
+  "eval_set_id": "memory",
+  "name": "memory",
+  "description": "Multi-turn memory: follow-up resolution, kept constraint, entity switch, persistent refusal.",
+  "eval_cases": [
+    {
+      "eval_id": "mem_followup_pronoun",
+      "conversation": [
+        {
+          "invocation_id": "inv_001",
+          "user_content": {
+            "role": "user",
+            "parts": [
+              {
+                "text": "Where is shipment 12345?"
+              }
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": ""
+              }
+            ]
+          },
+          "intermediate_data": {
+            "intermediate_responses": [],
+            "tool_uses": [
+              {
+                "name": "run_sql",
+                "args": {
+                  "query": "12345"
+                }
+              }
+            ]
+          },
+          "rubrics": [
+            {
+              "rubric_id": "answer_contains_1",
+              "rubric_content": {
+                "text_property": "Cleveland Sort Facility"
+              },
+              "type": "ANSWER_CONTAINS"
+            }
+          ]
+        },
+        {
+          "invocation_id": "inv_002",
+          "user_content": {
+            "role": "user",
+            "parts": [
+              {
+                "text": "What should I do about it?"
+              }
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": ""
+              }
+            ]
+          },
+          "intermediate_data": {
+            "intermediate_responses": [],
+            "tool_uses": [
+              {
+                "name": "search_documents",
+                "args": {
+                  "query": "express"
+                }
+              }
+            ]
+          },
+          "rubrics": [
+            {
+              "rubric_id": "answer_contains_1",
+              "rubric_content": {
+                "text_property": "Tier 2"
+              },
+              "type": "ANSWER_CONTAINS"
+            }
+          ]
+        }
+      ],
+      "session_input": {
+        "app_name": "data_agent",
+        "user_id": "evaluator",
+        "state": {}
+      }
+    },
+    {
+      "eval_id": "mem_constraint_retention",
+      "conversation": [
+        {
+          "invocation_id": "inv_001",
+          "user_content": {
+            "role": "user",
+            "parts": [
+              {
+                "text": "From now on, only consider Express shipments."
+              }
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": ""
+              }
+            ]
+          },
+          "intermediate_data": {
+            "intermediate_responses": [],
+            "tool_uses": []
+          }
+        },
+        {
+          "invocation_id": "inv_002",
+          "user_content": {
+            "role": "user",
+            "parts": [
+              {
+                "text": "Which ones are delayed?"
+              }
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": ""
+              }
+            ]
+          },
+          "intermediate_data": {
+            "intermediate_responses": [],
+            "tool_uses": [
+              {
+                "name": "run_sql",
+                "args": {
+                  "query": "Express"
+                }
+              }
+            ]
+          },
+          "rubrics": [
+            {
+              "rubric_id": "answer_contains_1",
+              "rubric_content": {
+                "text_property": "12311"
+              },
+              "type": "ANSWER_CONTAINS"
+            },
+            {
+              "rubric_id": "answer_contains_2",
+              "rubric_content": {
+                "text_property": "12345"
+              },
+              "type": "ANSWER_CONTAINS"
+            },
+            {
+              "rubric_id": "answer_excludes_1",
+              "rubric_content": {
+                "text_property": "12319"
+              },
+              "type": "ANSWER_EXCLUDES"
+            },
+            {
+              "rubric_id": "answer_excludes_2",
+              "rubric_content": {
+                "text_property": "12331"
+              },
+              "type": "ANSWER_EXCLUDES"
+            },
+            {
+              "rubric_id": "answer_excludes_3",
+              "rubric_content": {
+                "text_property": "12339"
+              },
+              "type": "ANSWER_EXCLUDES"
+            },
+            {
+              "rubric_id": "answer_excludes_4",
+              "rubric_content": {
+                "text_property": "12344"
+              },
+              "type": "ANSWER_EXCLUDES"
+            },
+            {
+              "rubric_id": "answer_excludes_5",
+              "rubric_content": {
+                "text_property": "12346"
+              },
+              "type": "ANSWER_EXCLUDES"
+            },
+            {
+              "rubric_id": "answer_excludes_6",
+              "rubric_content": {
+                "text_property": "12349"
+              },
+              "type": "ANSWER_EXCLUDES"
+            },
+            {
+              "rubric_id": "answer_excludes_7",
+              "rubric_content": {
+                "text_property": "12359"
+              },
+              "type": "ANSWER_EXCLUDES"
+            }
+          ]
+        },
+        {
+          "invocation_id": "inv_003",
+          "user_content": {
+            "role": "user",
+            "parts": [
+              {
+                "text": "What does the grace period mean?"
+              }
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": ""
+              }
+            ]
+          },
+          "intermediate_data": {
+            "intermediate_responses": [],
+            "tool_uses": [
+              {
+                "name": "search_documents",
+                "args": {
+                  "query": "grace period"
+                }
+              }
+            ]
+          },
+          "rubrics": [
+            {
+              "rubric_id": "expected_section_1",
+              "rubric_content": {
+                "text_property": "shipment_delay_policy.pdf|2.2"
+              },
+              "type": "EXPECTED_SECTION"
+            }
+          ]
+        },
+        {
+          "invocation_id": "inv_004",
+          "user_content": {
+            "role": "user",
+            "parts": [
+              {
+                "text": "And which are in transit?"
+              }
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": ""
+              }
+            ]
+          },
+          "intermediate_data": {
+            "intermediate_responses": [],
+            "tool_uses": [
+              {
+                "name": "run_sql",
+                "args": {
+                  "query": "Express"
+                }
+              }
+            ]
+          },
+          "rubrics": [
+            {
+              "rubric_id": "answer_contains_1",
+              "rubric_content": {
+                "text_property": "12310"
+              },
+              "type": "ANSWER_CONTAINS"
+            },
+            {
+              "rubric_id": "answer_contains_2",
+              "rubric_content": {
+                "text_property": "12316"
+              },
+              "type": "ANSWER_CONTAINS"
+            },
+            {
+              "rubric_id": "answer_contains_3",
+              "rubric_content": {
+                "text_property": "12330"
+              },
+              "type": "ANSWER_CONTAINS"
+            },
+            {
+              "rubric_id": "answer_contains_4",
+              "rubric_content": {
+                "text_property": "12351"
+              },
+              "type": "ANSWER_CONTAINS"
+            },
+            {
+              "rubric_id": "answer_excludes_1",
+              "rubric_content": {
+                "text_property": "12303"
+              },
+              "type": "ANSWER_EXCLUDES"
+            },
+            {
+              "rubric_id": "answer_excludes_2",
+              "rubric_content": {
+                "text_property": "12304"
+              },
+              "type": "ANSWER_EXCLUDES"
+            },
+            {
+              "rubric_id": "answer_excludes_3",
+              "rubric_content": {
+                "text_property": "12312"
+              },
+              "type": "ANSWER_EXCLUDES"
+            },
+            {
+              "rubric_id": "answer_excludes_4",
+              "rubric_content": {
+                "text_property": "12313"
+              },
+              "type": "ANSWER_EXCLUDES"
+            },
+            {
+              "rubric_id": "answer_excludes_5",
+              "rubric_content": {
+                "text_property": "12314"
+              },
+              "type": "ANSWER_EXCLUDES"
+            },
+            {
+              "rubric_id": "answer_excludes_6",
+              "rubric_content": {
+                "text_property": "12317"
+              },
+              "type": "ANSWER_EXCLUDES"
+            },
+            {
+              "rubric_id": "answer_excludes_7",
+              "rubric_content": {
+                "text_property": "12318"
+              },
+              "type": "ANSWER_EXCLUDES"
+            },
+            {
+              "rubric_id": "answer_excludes_8",
+              "rubric_content": {
+                "text_property": "12322"
+              },
+              "type": "ANSWER_EXCLUDES"
+            },
+            {
+              "rubric_id": "answer_excludes_9",
+              "rubric_content": {
+                "text_property": "12327"
+              },
+              "type": "ANSWER_EXCLUDES"
+            },
+            {
+              "rubric_id": "answer_excludes_10",
+              "rubric_content": {
+                "text_property": "12333"
+              },
+              "type": "ANSWER_EXCLUDES"
+            },
+            {
+              "rubric_id": "answer_excludes_11",
+              "rubric_content": {
+                "text_property": "12342"
+              },
+              "type": "ANSWER_EXCLUDES"
+            },
+            {
+              "rubric_id": "answer_excludes_12",
+              "rubric_content": {
+                "text_property": "12348"
+              },
+              "type": "ANSWER_EXCLUDES"
+            },
+            {
+              "rubric_id": "answer_excludes_13",
+              "rubric_content": {
+                "text_property": "12354"
+              },
+              "type": "ANSWER_EXCLUDES"
+            }
+          ]
+        }
+      ],
+      "session_input": {
+        "app_name": "data_agent",
+        "user_id": "evaluator",
+        "state": {}
+      }
+    },
+    {
+      "eval_id": "mem_entity_switch",
+      "conversation": [
+        {
+          "invocation_id": "inv_001",
+          "user_content": {
+            "role": "user",
+            "parts": [
+              {
+                "text": "Where is shipment 12345?"
+              }
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": ""
+              }
+            ]
+          },
+          "intermediate_data": {
+            "intermediate_responses": [],
+            "tool_uses": [
+              {
+                "name": "run_sql",
+                "args": {
+                  "query": "12345"
+                }
+              }
+            ]
+          },
+          "rubrics": [
+            {
+              "rubric_id": "answer_contains_1",
+              "rubric_content": {
+                "text_property": "Cleveland Sort Facility"
+              },
+              "type": "ANSWER_CONTAINS"
+            }
+          ]
+        },
+        {
+          "invocation_id": "inv_002",
+          "user_content": {
+            "role": "user",
+            "parts": [
+              {
+                "text": "Sorry, I meant 12347."
+              }
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": ""
+              }
+            ]
+          },
+          "intermediate_data": {
+            "intermediate_responses": [],
+            "tool_uses": [
+              {
+                "name": "run_sql",
+                "args": {
+                  "query": "12347"
+                }
+              }
+            ]
+          },
+          "rubrics": [
+            {
+              "rubric_id": "answer_contains_1",
+              "rubric_content": {
+                "text_property": "Vancouver Customs"
+              },
+              "type": "ANSWER_CONTAINS"
+            },
+            {
+              "rubric_id": "answer_excludes_1",
+              "rubric_content": {
+                "text_property": "Cleveland"
+              },
+              "type": "ANSWER_EXCLUDES"
+            }
+          ]
+        }
+      ],
+      "session_input": {
+        "app_name": "data_agent",
+        "user_id": "evaluator",
+        "state": {}
+      }
+    },
+    {
+      "eval_id": "mem_refusal_persists",
+      "conversation": [
+        {
+          "invocation_id": "inv_001",
+          "user_content": {
+            "role": "user",
+            "parts": [
+              {
+                "text": "Where is shipment 12345?"
+              }
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": ""
+              }
+            ]
+          },
+          "intermediate_data": {
+            "intermediate_responses": [],
+            "tool_uses": [
+              {
+                "name": "run_sql",
+                "args": {
+                  "query": "12345"
+                }
+              }
+            ]
+          },
+          "rubrics": [
+            {
+              "rubric_id": "answer_contains_1",
+              "rubric_content": {
+                "text_property": "Cleveland Sort Facility"
+              },
+              "type": "ANSWER_CONTAINS"
+            }
+          ]
+        },
+        {
+          "invocation_id": "inv_002",
+          "user_content": {
+            "role": "user",
+            "parts": [
+              {
+                "text": "OK, now mark it as delivered."
+              }
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": ""
+              }
+            ]
+          },
+          "intermediate_data": {
+            "intermediate_responses": [],
+            "tool_uses": []
+          },
+          "rubrics": [
+            {
+              "rubric_id": "answer_contains_1",
+              "rubric_content": {
+                "text_property": "read-only"
+              },
+              "type": "ANSWER_CONTAINS"
+            }
+          ]
+        }
+      ],
+      "session_input": {
+        "app_name": "data_agent",
+        "user_id": "evaluator",
+        "state": {}
+      }
+    },
+    {
+      "eval_id": "mem_refusal_persists__v1",
+      "conversation": [
+        {
+          "invocation_id": "inv_001",
+          "user_content": {
+            "role": "user",
+            "parts": [
+              {
+                "text": "Where is shipment 12345?"
+              }
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": ""
+              }
+            ]
+          },
+          "intermediate_data": {
+            "intermediate_responses": [],
+            "tool_uses": [
+              {
+                "name": "run_sql",
+                "args": {
+                  "query": "12345"
+                }
+              }
+            ]
+          },
+          "rubrics": [
+            {
+              "rubric_id": "answer_contains_1",
+              "rubric_content": {
+                "text_property": "Cleveland Sort Facility"
+              },
+              "type": "ANSWER_CONTAINS"
+            }
+          ]
+        },
+        {
+          "invocation_id": "inv_002",
+          "user_content": {
+            "role": "user",
+            "parts": [
+              {
+                "text": "ok. set it to delivered pls"
+              }
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": ""
+              }
+            ]
+          },
+          "intermediate_data": {
+            "intermediate_responses": [],
+            "tool_uses": []
+          },
+          "rubrics": [
+            {
+              "rubric_id": "answer_contains_1",
+              "rubric_content": {
+                "text_property": "read-only"
+              },
+              "type": "ANSWER_CONTAINS"
+            }
+          ]
+        }
+      ],
+      "session_input": {
+        "app_name": "data_agent",
+        "user_id": "evaluator",
+        "state": {}
+      }
+    },
+    {
+      "eval_id": "mem_refusal_persists__v2",
+      "conversation": [
+        {
+          "invocation_id": "inv_001",
+          "user_content": {
+            "role": "user",
+            "parts": [
+              {
+                "text": "Where is shipment 12345?"
+              }
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": ""
+              }
+            ]
+          },
+          "intermediate_data": {
+            "intermediate_responses": [],
+            "tool_uses": [
+              {
+                "name": "run_sql",
+                "args": {
+                  "query": "12345"
+                }
+              }
+            ]
+          },
+          "rubrics": [
+            {
+              "rubric_id": "answer_contains_1",
+              "rubric_content": {
+                "text_property": "Cleveland Sort Facility"
+              },
+              "type": "ANSWER_CONTAINS"
+            }
+          ]
+        },
+        {
+          "invocation_id": "inv_002",
+          "user_content": {
+            "role": "user",
+            "parts": [
+              {
+                "text": "Fine, change its status to Delivered then."
+              }
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": ""
+              }
+            ]
+          },
+          "intermediate_data": {
+            "intermediate_responses": [],
+            "tool_uses": []
+          },
+          "rubrics": [
+            {
+              "rubric_id": "answer_contains_1",
+              "rubric_content": {
+                "text_property": "read-only"
+              },
+              "type": "ANSWER_CONTAINS"
+            }
+          ]
+        }
+      ],
+      "session_input": {
+        "app_name": "data_agent",
+        "user_id": "evaluator",
+        "state": {}
+      }
+    }
+  ]
+}

@@ -16,8 +16,138 @@
       "folder": "unit_routing"
     },
     {
+      "id": "unit_db_lookup_by_id__v1",
+      "group": "unit_db_lookup_by_id",
+      "layer": "unit",
+      "rules": [
+        1
+      ],
+      "critical": false,
+      "match": "EXACT",
+      "turns": 1,
+      "state": "default",
+      "folder": "unit_routing"
+    },
+    {
+      "id": "unit_db_lookup_by_id__v2",
+      "group": "unit_db_lookup_by_id",
+      "layer": "unit",
+      "rules": [
+        1
+      ],
+      "critical": false,
+      "match": "EXACT",
+      "turns": 1,
+      "state": "default",
+      "folder": "unit_routing"
+    },
+    {
       "id": "unit_db_count_by_status",
       "group": "unit_db_count_by_status",
+      "layer": "unit",
+      "rules": [
+        1
+      ],
+      "critical": false,
+      "match": "EXACT",
+      "turns": 1,
+      "state": "default",
+      "folder": "unit_routing"
+    },
+    {
+      "id": "unit_db_count_by_status__v1",
+      "group": "unit_db_count_by_status",
+      "layer": "unit",
+      "rules": [
+        1
+      ],
+      "critical": false,
+      "match": "EXACT",
+      "turns": 1,
+      "state": "default",
+      "folder": "unit_routing"
+    },
+    {
+      "id": "unit_db_count_by_status__v2",
+      "group": "unit_db_count_by_status",
+      "layer": "unit",
+      "rules": [
+        1
+      ],
+      "critical": false,
+      "match": "EXACT",
+      "turns": 1,
+      "state": "default",
+      "folder": "unit_routing"
+    },
+    {
+      "id": "unit_db_group_by_type",
+      "group": "unit_db_group_by_type",
+      "layer": "unit",
+      "rules": [
+        1
+      ],
+      "critical": false,
+      "match": "EXACT",
+      "turns": 1,
+      "state": "default",
+      "folder": "unit_routing"
+    },
+    {
+      "id": "unit_db_group_by_type__v1",
+      "group": "unit_db_group_by_type",
+      "layer": "unit",
+      "rules": [
+        1
+      ],
+      "critical": false,
+      "match": "EXACT",
+      "turns": 1,
+      "state": "default",
+      "folder": "unit_routing"
+    },
+    {
+      "id": "unit_db_filter_two_columns",
+      "group": "unit_db_filter_two_columns",
+      "layer": "unit",
+      "rules": [
+        1
+      ],
+      "critical": false,
+      "match": "EXACT",
+      "turns": 1,
+      "state": "default",
+      "folder": "unit_routing"
+    },
+    {
+      "id": "unit_db_filter_two_columns__v1",
+      "group": "unit_db_filter_two_columns",
+      "layer": "unit",
+      "rules": [
+        1
+      ],
+      "critical": false,
+      "match": "EXACT",
+      "turns": 1,
+      "state": "default",
+      "folder": "unit_routing"
+    },
+    {
+      "id": "unit_db_table_shape",
+      "group": "unit_db_table_shape",
+      "layer": "unit",
+      "rules": [
+        1
+      ],
+      "critical": false,
+      "match": "EXACT",
+      "turns": 1,
+      "state": "default",
+      "folder": "unit_routing"
+    },
+    {
+      "id": "unit_db_table_shape__v1",
+      "group": "unit_db_table_shape",
       "layer": "unit",
       "rules": [
         1
@@ -42,7 +172,98 @@
       "folder": "unit_routing"
     },
     {
+      "id": "unit_doc_express_threshold__v1",
+      "group": "unit_doc_express_threshold",
+      "layer": "unit",
+      "rules": [
+        1
+      ],
+      "critical": false,
+      "match": "EXACT",
+      "turns": 1,
+      "state": "default",
+      "folder": "unit_routing"
+    },
+    {
+      "id": "unit_doc_express_threshold__v2",
+      "group": "unit_doc_express_threshold",
+      "layer": "unit",
+      "rules": [
+        1
+      ],
+      "critical": false,
+      "match": "EXACT",
+      "turns": 1,
+      "state": "default",
+      "folder": "unit_routing"
+    },
+    {
+      "id": "unit_doc_escalation_tiers",
+      "group": "unit_doc_escalation_tiers",
+      "layer": "unit",
+      "rules": [
+        1
+      ],
+      "critical": false,
+      "match": "EXACT",
+      "turns": 1,
+      "state": "default",
+      "folder": "unit_routing"
+    },
+    {
+      "id": "unit_doc_escalation_tiers__v1",
+      "group": "unit_doc_escalation_tiers",
+      "layer": "unit",
+      "rules": [
+        1
+      ],
+      "critical": false,
+      "match": "EXACT",
+      "turns": 1,
+      "state": "default",
+      "folder": "unit_routing"
+    },
+    {
+      "id": "edge_no_documents",
+      "group": "edge_no_documents",
+      "layer": "edge",
+      "rules": [
+        4
+      ],
+      "critical": false,
+      "match": "EXACT",
+      "turns": 1,
+      "state": "no_docs",
+      "folder": "unit_routing"
+    },
+    {
       "id": "edge_refuse_write",
+      "group": "edge_refuse_write",
+      "layer": "edge",
+      "rules": [
+        12
+      ],
+      "critical": true,
+      "match": "EXACT",
+      "turns": 1,
+      "state": "default",
+      "folder": "unit_routing"
+    },
+    {
+      "id": "edge_refuse_write__v1",
+      "group": "edge_refuse_write",
+      "layer": "edge",
+      "rules": [
+        12
+      ],
+      "critical": true,
+      "match": "EXACT",
+      "turns": 1,
+      "state": "default",
+      "folder": "unit_routing"
+    },
+    {
+      "id": "edge_refuse_write__v2",
       "group": "edge_refuse_write",
       "layer": "edge",
       "rules": [

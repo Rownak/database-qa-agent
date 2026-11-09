@@ -1,0 +1,24 @@
+name: cache_session
+# smoke.yaml with the session-scoped response cache on, for the regression_cache suite (Sprint 11, Phase 11.3).
+agent:
+  model:
+    agent: gemini-3.5-flash-lite
+    intent: null              # same as agent
+    temperature: 0.0
+  intent_enabled: true
+  retrieval:
+    mode: hybrid
+    min_dense_sim: 0.62
+    max_top_k: 8
+  cache:
+    response:
+      enabled: true
+      scope: session
+dataset:
+  path: evals/datasets/shipments_v1.yaml
+eval:
+  mode: agent
+  repeats: 1
+  fail_under:
+    intent_accuracy: 0.8
+    tool_sequence_match: 0.8

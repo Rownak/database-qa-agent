@@ -109,7 +109,8 @@ class Case(_Strict):
         rules: Numbers of the ``INSTRUCTION`` rules the case exercises (1-14).
         critical: A critical case must succeed in every run (design section 7.3).
         state: Name of a preset in ``evals/golden/states/``.
-        variants: Paraphrases of the first (only) question; each becomes a case ``<id>__vN``.
+        variants: Paraphrases of the last turn (the only one of a single-turn case); each becomes a case
+            ``<id>__vN`` with the same checks.
         trajectory: ``"any"`` states on purpose that a turn with an empty ``tools`` list accepts any tool
             use. Without it an empty list under IN_ORDER is rejected, because ADK scores it as a match for
             every trajectory.

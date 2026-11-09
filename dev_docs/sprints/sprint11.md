@@ -65,37 +65,37 @@ Every phase ends with the following (CLAUDE.md):
 
 **Goal:** the initial cases of design §3.1 exist as golden YAML and build cleanly.
 
-- [ ] **`unit_routing` and `unit_hybrid`:** add the remaining unit and edge cases, with document fragments and sections copied from the policy text and data values from `contains_sql`.
-- [ ] **`memory`:** the four multi-turn cases, with checks on each turn.
-- [ ] **`adversarial`:** the seven cases, split into `adversarial/exact` and `adversarial/in_order` under one suite; the injection case uses the `injection_docs` preset.
-- [ ] **`regression`:** `reg_empty_state_build` in `regression`. Put `reg_followup_not_cached` in `regression_cache`, which needs a new `configs/eval/cache_session.yaml` (`smoke.yaml` with `cache.response.enabled: true`, `scope: session`).
-- [ ] **Variants:** 1–2 paraphrases for every critical case and every `unit_*` happy path (design §3.2).
-- [ ] **Review** each case against the checklist in design §4.3 and mark critical cases (⚑).
-- [ ] **Tests (offline):** all suites build; the coverage test passes with the full set; critical ids match design §3.1.
-- [ ] **Dev script** `phase_11_3.py`: print each suite's cases with layer, rules, critical flag and golden tools per turn.
+- [x] **`unit_routing` and `unit_hybrid`:** add the remaining unit and edge cases, with document fragments and sections copied from the policy text and data values from `contains_sql`.
+- [x] **`memory`:** the four multi-turn cases, with checks on each turn.
+- [x] **`adversarial`:** the seven cases, split into `adversarial/exact` and `adversarial/in_order` under one suite; the injection case uses the `injection_docs` preset.
+- [x] **`regression`:** `reg_empty_state_build` in `regression`. Put `reg_followup_not_cached` in `regression_cache`, which needs a new `configs/eval/cache_session.yaml` (`smoke.yaml` with `cache.response.enabled: true`, `scope: session`).
+- [x] **Variants:** 1–2 paraphrases for every critical case and every `unit_*` happy path (design §3.2).
+- [x] **Review** each case against the checklist in design §4.3 and mark critical cases (⚑).
+- [x] **Tests (offline):** all suites build; the coverage test passes with the full set; critical ids match design §3.1.
+- [x] **Dev script** `phase_11_3.py`: print each suite's cases with layer, rules, critical flag and golden tools per turn.
 
 ## Phase 11.4 — Registry, Headless Runner and Report
 
 **Goal:** one command runs the selected suites *n* times, computes the statistics and the verdict, writes the report and exits 0, 1 or 2 (design §5, §7, §8).
 
-- [ ] **Registry** `evals/adk/suites.yaml` with the suites, per-suite `agent_config`, and the `pr`, `nightly` and `release` tiers (`n`, `min_success`, `suite_mean_pass1`).
-- [ ] **Runner** `evals/adk/suite.py`:
+- [x] **Registry** `evals/adk/suites.yaml` with the suites, per-suite `agent_config`, and the `pr`, `nightly` and `release` tiers (`n`, `min_success`, `suite_mean_pass1`).
+- [x] **Runner** `evals/adk/suite.py`:
   - options `--tier`, `--suite`, `--n`, `--baseline`, `--capture <id>`
   - per suite: build the agent from its config, run `AgentEvaluator.evaluate(num_runs=n)` with a results manager, catch the assertion and collect the result files of this run
   - suites run in order
-- [ ] **Validity:** classify invalid runs (no metric results, or a BM25-fallback note in a search response), rerun them once, and apply the 10 % and `min_success` rules (design §7.1).
-- [ ] **Statistics and verdict:**
+- [x] **Validity:** classify invalid runs (no metric results, or a BM25-fallback note in a search response), rerun them once, and apply the 10 % and `min_success` rules (design §7.1).
+- [x] **Statistics and verdict:**
   - per case: c, n, pass@1, pass^3, pass@k and STABLE / FLAKY / BROKEN; variant groups take their worst member
   - per suite: the criteria of design §7.3, with regressions against `--baseline`
-- [ ] **Report:** `runs/adk/<timestamp>_<tier>/` with `report.json`, `report.md` (dashboard as in design §8), copied `eval_history/` and run metadata (commit, instruction hash, models, tier, n).
-- [ ] **pytest gate:** `tests/test_adk_eval.py` becomes a wrapper around `suite.py --tier pr` (still `RUN_ADK_EVAL=1`).
-- [ ] **Tests (offline, synthetic result files):**
+- [x] **Report:** `runs/adk/<timestamp>_<tier>/` with `report.json`, `report.md` (dashboard as in design §8), copied `eval_history/` and run metadata (commit, instruction hash, models, tier, n).
+- [x] **pytest gate:** `tests/test_adk_eval.py` becomes a wrapper around `suite.py --tier pr` (still `RUN_ADK_EVAL=1`).
+- [x] **Tests (offline, synthetic result files):**
   - pass@1, pass^k and pass@k against hand-computed values, including n=5, c=1
   - class and verdict rules, critical cases, variant groups
   - INVALID on too many invalid runs; exit codes 0, 1 and 2
   - regression detection against a baseline report
   - report files and dashboard content
-- [ ] **Dev script** `phase_11_4.py`: run the report step on a folder of synthetic result files and print the dashboard.
+- [x] **Dev script** `phase_11_4.py`: run the report step on a folder of synthetic result files and print the dashboard.
 
 ## Phase 11.5 — End-to-End Validation
 

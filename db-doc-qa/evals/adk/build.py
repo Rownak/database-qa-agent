@@ -179,7 +179,7 @@ def validate(suites: list[GoldenSuite], states_dir: Path = STATES_DIR) -> tuple[
 
     Errors (the build refuses): an empty golden tool list without ``trajectory: any``, ``trajectory: any``
     where it cannot apply (an EXACT folder, or no empty turn), an unknown tool or tool argument, duplicate
-    ids (also across suites and variant ids), an unknown state preset, variants on a multi-turn case, a
+    ids (also across suites and variant ids), an unknown state preset, a
     fragment both required and forbidden, and an unusable ``contains_sql``. Warnings (the build goes on):
     redundant cases (same layer, rules, match type and golden tools) and an ``instruction_sha`` that no
     longer matches the agent.
@@ -228,8 +228,6 @@ def _validate_case(suite: GoldenSuite, case: Case, where: str, states_dir: Path)
         errors.append(f"{where}: trajectory: any, but no turn has an empty tool list")
     if match == "IN_ORDER" and has_empty_turn and case.trajectory != "any":
         errors.append(f"{where}: empty golden tool list under IN_ORDER matches every trajectory; state 'trajectory: any'")
-    if case.variants and len(case.turns) > 1:
-        errors.append(f"{where}: variants are allowed only on single-turn cases")
     try:
         resolve_state(case.state, states_dir)
     except ValueError as exc:
@@ -272,13 +270,13 @@ def _turn_rubrics(turn) -> list[dict]:
     return rubrics
 
 
-def _eval_case(case: Case, eval_id: str, first_question: str, state: dict) -> dict:
-    """Builds one ADK eval case; ``first_question`` replaces the first turn's text for a variant."""
+def _eval_case(case: Case, eval_id: str, last_question: str, state: dict) -> dict:
+    """Builds one ADK eval case; ``last_question`` is the text of the last turn (a variant rewords it)."""
     conversation = []
     for n, turn in enumerate(case.turns, 1):
         invocation = {
             "invocation_id": f"inv_{n:03d}",
-            "user_content": {"role": "user", "parts": [{"text": first_question if n == 1 else turn.q}]},
+            "user_content": {"role": "user", "parts": [{"text": last_question if n == len(case.turns) else turn.q}]},
             "final_response": {"role": "model", "parts": [{"text": ""}]},  # the answer is judged by the rubrics
             "intermediate_data": {
                 "intermediate_responses": [],
@@ -350,7 +348,7 @@ def render(suites: list[GoldenSuite], adk_dir: Path = ADK_DIR, states_dir: Path 
             match = effective_match(suite, case)
             folder = adk_dir / suite.suite if len(matches) == 1 else adk_dir / suite.suite / match.lower()
             state = resolve_state(case.state, states_dir)
-            questions = [(case.id, case.turns[0].q), *((f"{case.id}__v{i}", q) for i, q in enumerate(case.variants, 1))]
+            questions = [(case.id, case.turns[-1].q), *((f"{case.id}__v{i}", q) for i, q in enumerate(case.variants, 1))]
             for eval_id, question in questions:
                 eval_cases[match].append(_eval_case(case, eval_id, question, state))
                 manifest.append({

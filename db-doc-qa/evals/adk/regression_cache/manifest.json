@@ -1,0 +1,19 @@
+{
+  "suite": "regression_cache",
+  "instruction_sha": "27076fc64606",
+  "cases": [
+    {
+      "id": "reg_followup_not_cached",
+      "group": "reg_followup_not_cached",
+      "layer": "regression",
+      "rules": [
+        1
+      ],
+      "critical": false,
+      "match": "EXACT",
+      "turns": 2,
+      "state": "default",
+      "folder": "regression_cache"
+    }
+  ]
+}

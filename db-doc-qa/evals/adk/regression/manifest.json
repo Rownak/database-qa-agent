@@ -1,0 +1,19 @@
+{
+  "suite": "regression",
+  "instruction_sha": "27076fc64606",
+  "cases": [
+    {
+      "id": "reg_empty_state_build",
+      "group": "reg_empty_state_build",
+      "layer": "regression",
+      "rules": [
+        1
+      ],
+      "critical": false,
+      "match": "EXACT",
+      "turns": 1,
+      "state": "default",
+      "folder": "regression"
+    }
+  ]
+}

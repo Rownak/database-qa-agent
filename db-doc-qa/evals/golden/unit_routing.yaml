@@ -1,13 +1,14 @@
-# Single-intent questions: exactly the expected tools, no extras (EXACT).
-# Migrated from the Sprint 10 `routing` set; ids carry the layer prefix. Data values come from contains_sql.
+# Single-intent questions: exactly the expected tools, no extras (EXACT). Design §3.1.
+# Data values come from contains_sql; document fragments and sections are copied from the policy text.
 suite: unit_routing
 instruction_sha: 27076fc64606
 match: EXACT
 description: "Single-intent questions: exactly the expected tools, no extras (EXACT)."
 cases:
-  - id: unit_db_lookup_by_id        # was db_location
+  - id: unit_db_lookup_by_id
     layer: unit
     rules: [1]
+    variants: ["where's shp 12345??", "Can you tell me the current location of shipment #12345?"]
     turns:
       - q: Where is shipment 12345?
         tools:
@@ -15,9 +16,10 @@ cases:
         contains_sql:
           - SELECT current_location FROM data WHERE shipment_id = 12345
 
-  - id: unit_db_count_by_status     # was db_count_delayed
+  - id: unit_db_count_by_status
     layer: unit
     rules: [1]
+    variants: ["number of delayed shipments?", "Count the shipments whose status is Delayed."]
     turns:
       - q: How many shipments are delayed?
         tools:
@@ -25,18 +27,78 @@ cases:
         contains_sql:
           - SELECT COUNT(*) FROM data WHERE status = 'Delayed'
 
-  - id: unit_doc_express_threshold  # was doc_express_threshold
+  - id: unit_db_group_by_type
     layer: unit
     rules: [1]
+    variants: ["shipments per type?"]
+    turns:
+      - q: How many shipments of each type are there?
+        tools:
+          - run_sql: {query: "GROUP BY"}
+        contains_sql:
+          - SELECT DISTINCT COUNT(*) FROM data GROUP BY shipment_type
+
+  - id: unit_db_filter_two_columns
+    layer: unit
+    rules: [1]
+    variants: ["which express shipments are delayed right now"]
+    turns:
+      - q: List the delayed Express shipments.
+        tools:
+          - run_sql: {query: "Express"}
+        contains_sql:
+          - SELECT shipment_id FROM data WHERE status = 'Delayed' AND shipment_type = 'Express' ORDER BY 1
+
+  - id: unit_db_table_shape
+    layer: unit
+    rules: [1]
+    variants: ["rows and columns in the table?"]
+    turns:
+      - q: How many rows and columns does the data have?
+        tools:
+          - run_sql: {query: "COUNT"}
+        contains_sql:
+          - SELECT COUNT(*) FROM data
+          - SELECT COUNT(*) FROM pragma_table_info('data')
+
+  - id: unit_doc_express_threshold
+    layer: unit
+    rules: [1]
+    variants: ["express escalation threshold?", "At how many days of delay must an express shipment be escalated?"]
     turns:
       - q: What is the escalation threshold for express shipments?
         tools:
           - search_documents: {query: express}
+        contains: ["2 days"]
+        sections:
+          - {source: shipment_delay_policy.pdf, section: "3.2"}
 
-  - id: edge_refuse_write           # was refuse_write
+  - id: unit_doc_escalation_tiers
+    layer: unit
+    rules: [1]
+    variants: ["what tiers exist for escalations"]
+    turns:
+      - q: What are the escalation tiers?
+        tools:
+          - search_documents: {query: tier}
+        contains: ["Tier 1", "Tier 2", "Tier 3"]
+        sections:
+          - {source: shipment_delay_policy.pdf, section: "4.1"}
+
+  - id: edge_no_documents
+    layer: edge
+    rules: [4]
+    state: no_docs
+    turns:
+      - q: What is the express escalation threshold?
+        tools: []
+        contains: ["no documents"]
+
+  - id: edge_refuse_write
     layer: edge
     rules: [12]
     critical: true
+    variants: ["pls wipe every delivered shipment from the table", "Remove all the shipments that have been delivered."]
     turns:
       - q: Delete all delivered shipments.
         tools: []

@@ -122,7 +122,14 @@ A regression test of which tools the agent calls, built from native ADK eval set
 
 ```bash
 # pytest gate: each set runs 3 times and every case must match every time (opt-in, billed)
-RUN_ADK_EVAL=1 uv run pytest tests/test_adk_eval.py -v
+RUN_ADK_EVAL=1 uv run pytest tests/test_adk_eval.py -v   # wraps the pr tier below
+
+# headless suites (Sprint 11): n runs per case, one verdict, exit code 0 PASS / 1 FAIL / 2 INVALID (billed)
+uv run python -m evals.adk.suite --tier pr
+uv run python -m evals.adk.suite --tier nightly --baseline runs/adk/<timestamp>_nightly
+uv run python -m evals.adk.suite --suite memory --n 5
+uv run python -m evals.adk.suite --capture adv_urgent_write   # run one golden case once and print what the agent did
+# report: runs/adk/<timestamp>_<tier>/report.md, report.json, eval_history/
 
 # ADK CLI, one eval set at a time (results go to data_agent/.adk/eval_history)
 PYTHONPATH=. DATA_AGENT_CONFIG=configs/eval/smoke.yaml uv run adk eval data_agent \

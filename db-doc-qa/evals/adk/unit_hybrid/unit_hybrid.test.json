@@ -40,7 +40,23 @@
                 }
               }
             ]
-          }
+          },
+          "rubrics": [
+            {
+              "rubric_id": "answer_contains_1",
+              "rubric_content": {
+                "text_property": "Tier 2"
+              },
+              "type": "ANSWER_CONTAINS"
+            },
+            {
+              "rubric_id": "expected_section_1",
+              "rubric_content": {
+                "text_property": "shipment_delay_policy.pdf|3.2"
+              },
+              "type": "EXPECTED_SECTION"
+            }
+          ]
         }
       ],
       "session_input": {
@@ -50,7 +66,7 @@
       }
     },
     {
-      "eval_id": "edge_conflicting_docs",
+      "eval_id": "unit_hybrid_record_to_policy__v1",
       "conversation": [
         {
           "invocation_id": "inv_001",
@@ -58,7 +74,7 @@
             "role": "user",
             "parts": [
               {
-                "text": "When must shipment 12347 be escalated?"
+                "text": "shp 12345 is delayed, what do i do?"
               }
             ]
           },
@@ -76,17 +92,33 @@
               {
                 "name": "run_sql",
                 "args": {
-                  "query": "12347"
+                  "query": "12345"
                 }
               },
               {
                 "name": "search_documents",
                 "args": {
-                  "query": "international"
+                  "query": "express"
                 }
               }
             ]
-          }
+          },
+          "rubrics": [
+            {
+              "rubric_id": "answer_contains_1",
+              "rubric_content": {
+                "text_property": "Tier 2"
+              },
+              "type": "ANSWER_CONTAINS"
+            },
+            {
+              "rubric_id": "expected_section_1",
+              "rubric_content": {
+                "text_property": "shipment_delay_policy.pdf|3.2"
+              },
+              "type": "EXPECTED_SECTION"
+            }
+          ]
         }
       ],
       "session_input": {
@@ -96,7 +128,7 @@
       }
     },
     {
-      "eval_id": "edge_no_type_rule",
+      "eval_id": "unit_hybrid_record_to_policy__v2",
       "conversation": [
         {
           "invocation_id": "inv_001",
@@ -104,7 +136,7 @@
             "role": "user",
             "parts": [
               {
-                "text": "Shipment 12349 is delayed. What should I do?"
+                "text": "Shipment 12345 is running late. What is the right next step?"
               }
             ]
           },
@@ -122,63 +154,33 @@
               {
                 "name": "run_sql",
                 "args": {
-                  "query": "12349"
+                  "query": "12345"
                 }
               },
               {
                 "name": "search_documents",
                 "args": {
-                  "query": "refrigerated"
+                  "query": "express"
                 }
               }
             ]
-          }
-        }
-      ],
-      "session_input": {
-        "app_name": "data_agent",
-        "user_id": "evaluator",
-        "state": {}
-      }
-    },
-    {
-      "eval_id": "edge_record_not_found",
-      "conversation": [
-        {
-          "invocation_id": "inv_001",
-          "user_content": {
-            "role": "user",
-            "parts": [
-              {
-                "text": "Shipment 99999 is delayed. What should I do?"
-              }
-            ]
           },
-          "final_response": {
-            "role": "model",
-            "parts": [
-              {
-                "text": ""
-              }
-            ]
-          },
-          "intermediate_data": {
-            "intermediate_responses": [],
-            "tool_uses": [
-              {
-                "name": "run_sql",
-                "args": {
-                  "query": "99999"
-                }
+          "rubrics": [
+            {
+              "rubric_id": "answer_contains_1",
+              "rubric_content": {
+                "text_property": "Tier 2"
               },
-              {
-                "name": "search_documents",
-                "args": {
-                  "query": "delay"
-                }
-              }
-            ]
-          }
+              "type": "ANSWER_CONTAINS"
+            },
+            {
+              "rubric_id": "expected_section_1",
+              "rubric_content": {
+                "text_property": "shipment_delay_policy.pdf|3.2"
+              },
+              "type": "EXPECTED_SECTION"
+            }
+          ]
         }
       ],
       "session_input": {
@@ -224,13 +226,715 @@
                 }
               }
             ]
-          }
+          },
+          "rubrics": [
+            {
+              "rubric_id": "answer_contains_1",
+              "rubric_content": {
+                "text_property": "12311"
+              },
+              "type": "ANSWER_CONTAINS"
+            },
+            {
+              "rubric_id": "answer_contains_2",
+              "rubric_content": {
+                "text_property": "12345"
+              },
+              "type": "ANSWER_CONTAINS"
+            },
+            {
+              "rubric_id": "expected_section_1",
+              "rubric_content": {
+                "text_property": "shipment_delay_policy.pdf|3.2"
+              },
+              "type": "EXPECTED_SECTION"
+            }
+          ]
         }
       ],
       "session_input": {
         "app_name": "data_agent",
         "user_id": "evaluator",
         "state": {}
+      }
+    },
+    {
+      "eval_id": "unit_hybrid_policy_then_filter__v1",
+      "conversation": [
+        {
+          "invocation_id": "inv_001",
+          "user_content": {
+            "role": "user",
+            "parts": [
+              {
+                "text": "express shipments over their escalation limit - which ones?"
+              }
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": ""
+              }
+            ]
+          },
+          "intermediate_data": {
+            "intermediate_responses": [],
+            "tool_uses": [
+              {
+                "name": "search_documents",
+                "args": {
+                  "query": "express"
+                }
+              },
+              {
+                "name": "run_sql",
+                "args": {
+                  "query": "Express"
+                }
+              }
+            ]
+          },
+          "rubrics": [
+            {
+              "rubric_id": "answer_contains_1",
+              "rubric_content": {
+                "text_property": "12311"
+              },
+              "type": "ANSWER_CONTAINS"
+            },
+            {
+              "rubric_id": "answer_contains_2",
+              "rubric_content": {
+                "text_property": "12345"
+              },
+              "type": "ANSWER_CONTAINS"
+            },
+            {
+              "rubric_id": "expected_section_1",
+              "rubric_content": {
+                "text_property": "shipment_delay_policy.pdf|3.2"
+              },
+              "type": "EXPECTED_SECTION"
+            }
+          ]
+        }
+      ],
+      "session_input": {
+        "app_name": "data_agent",
+        "user_id": "evaluator",
+        "state": {}
+      }
+    },
+    {
+      "eval_id": "unit_hybrid_customs_record",
+      "conversation": [
+        {
+          "invocation_id": "inv_001",
+          "user_content": {
+            "role": "user",
+            "parts": [
+              {
+                "text": "Shipment 12347 is on customs hold. What do we tell the customer?"
+              }
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": ""
+              }
+            ]
+          },
+          "intermediate_data": {
+            "intermediate_responses": [],
+            "tool_uses": [
+              {
+                "name": "run_sql",
+                "args": {
+                  "query": "12347"
+                }
+              },
+              {
+                "name": "search_documents",
+                "args": {
+                  "query": "customs"
+                }
+              }
+            ]
+          },
+          "rubrics": [
+            {
+              "rubric_id": "expected_section_1",
+              "rubric_content": {
+                "text_property": "international_shipping_procedures.txt|3.2"
+              },
+              "type": "EXPECTED_SECTION"
+            },
+            {
+              "rubric_id": "expected_section_2",
+              "rubric_content": {
+                "text_property": "customer_communication_guidelines.pdf|2.3"
+              },
+              "type": "EXPECTED_SECTION"
+            }
+          ]
+        }
+      ],
+      "session_input": {
+        "app_name": "data_agent",
+        "user_id": "evaluator",
+        "state": {}
+      }
+    },
+    {
+      "eval_id": "unit_hybrid_customs_record__v1",
+      "conversation": [
+        {
+          "invocation_id": "inv_001",
+          "user_content": {
+            "role": "user",
+            "parts": [
+              {
+                "text": "12347 is stuck in customs, what should we say to the customer?"
+              }
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": ""
+              }
+            ]
+          },
+          "intermediate_data": {
+            "intermediate_responses": [],
+            "tool_uses": [
+              {
+                "name": "run_sql",
+                "args": {
+                  "query": "12347"
+                }
+              },
+              {
+                "name": "search_documents",
+                "args": {
+                  "query": "customs"
+                }
+              }
+            ]
+          },
+          "rubrics": [
+            {
+              "rubric_id": "expected_section_1",
+              "rubric_content": {
+                "text_property": "international_shipping_procedures.txt|3.2"
+              },
+              "type": "EXPECTED_SECTION"
+            },
+            {
+              "rubric_id": "expected_section_2",
+              "rubric_content": {
+                "text_property": "customer_communication_guidelines.pdf|2.3"
+              },
+              "type": "EXPECTED_SECTION"
+            }
+          ]
+        }
+      ],
+      "session_input": {
+        "app_name": "data_agent",
+        "user_id": "evaluator",
+        "state": {}
+      }
+    },
+    {
+      "eval_id": "unit_doc_customs_handling",
+      "conversation": [
+        {
+          "invocation_id": "inv_001",
+          "user_content": {
+            "role": "user",
+            "parts": [
+              {
+                "text": "How should a customs hold be handled?"
+              }
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": ""
+              }
+            ]
+          },
+          "intermediate_data": {
+            "intermediate_responses": [],
+            "tool_uses": [
+              {
+                "name": "search_documents",
+                "args": {
+                  "query": "customs"
+                }
+              }
+            ]
+          },
+          "rubrics": [
+            {
+              "rubric_id": "expected_section_1",
+              "rubric_content": {
+                "text_property": "international_shipping_procedures.txt|3.2"
+              },
+              "type": "EXPECTED_SECTION"
+            }
+          ]
+        }
+      ],
+      "session_input": {
+        "app_name": "data_agent",
+        "user_id": "evaluator",
+        "state": {}
+      }
+    },
+    {
+      "eval_id": "unit_doc_customs_handling__v1",
+      "conversation": [
+        {
+          "invocation_id": "inv_001",
+          "user_content": {
+            "role": "user",
+            "parts": [
+              {
+                "text": "steps for a customs hold?"
+              }
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": ""
+              }
+            ]
+          },
+          "intermediate_data": {
+            "intermediate_responses": [],
+            "tool_uses": [
+              {
+                "name": "search_documents",
+                "args": {
+                  "query": "customs"
+                }
+              }
+            ]
+          },
+          "rubrics": [
+            {
+              "rubric_id": "expected_section_1",
+              "rubric_content": {
+                "text_property": "international_shipping_procedures.txt|3.2"
+              },
+              "type": "EXPECTED_SECTION"
+            }
+          ]
+        }
+      ],
+      "session_input": {
+        "app_name": "data_agent",
+        "user_id": "evaluator",
+        "state": {}
+      }
+    },
+    {
+      "eval_id": "edge_record_not_found",
+      "conversation": [
+        {
+          "invocation_id": "inv_001",
+          "user_content": {
+            "role": "user",
+            "parts": [
+              {
+                "text": "Shipment 99999 is delayed. What should I do?"
+              }
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": ""
+              }
+            ]
+          },
+          "intermediate_data": {
+            "intermediate_responses": [],
+            "tool_uses": [
+              {
+                "name": "run_sql",
+                "args": {
+                  "query": "99999"
+                }
+              },
+              {
+                "name": "search_documents",
+                "args": {
+                  "query": "delay"
+                }
+              }
+            ]
+          },
+          "rubrics": [
+            {
+              "rubric_id": "answer_contains_1",
+              "rubric_content": {
+                "text_property": "general guidance"
+              },
+              "type": "ANSWER_CONTAINS"
+            }
+          ]
+        }
+      ],
+      "session_input": {
+        "app_name": "data_agent",
+        "user_id": "evaluator",
+        "state": {}
+      }
+    },
+    {
+      "eval_id": "edge_no_type_rule",
+      "conversation": [
+        {
+          "invocation_id": "inv_001",
+          "user_content": {
+            "role": "user",
+            "parts": [
+              {
+                "text": "Shipment 12349 is delayed. What should I do?"
+              }
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": ""
+              }
+            ]
+          },
+          "intermediate_data": {
+            "intermediate_responses": [],
+            "tool_uses": [
+              {
+                "name": "run_sql",
+                "args": {
+                  "query": "12349"
+                }
+              },
+              {
+                "name": "search_documents",
+                "args": {
+                  "query": "refrigerated"
+                }
+              }
+            ]
+          },
+          "rubrics": [
+            {
+              "rubric_id": "answer_contains_1",
+              "rubric_content": {
+                "text_property": "4 days"
+              },
+              "type": "ANSWER_CONTAINS"
+            },
+            {
+              "rubric_id": "expected_section_1",
+              "rubric_content": {
+                "text_property": "shipment_delay_policy.pdf|2.4"
+              },
+              "type": "EXPECTED_SECTION"
+            }
+          ]
+        }
+      ],
+      "session_input": {
+        "app_name": "data_agent",
+        "user_id": "evaluator",
+        "state": {}
+      }
+    },
+    {
+      "eval_id": "edge_exception_status",
+      "conversation": [
+        {
+          "invocation_id": "inv_001",
+          "user_content": {
+            "role": "user",
+            "parts": [
+              {
+                "text": "Shipment 12320 is in Exception status. What applies?"
+              }
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": ""
+              }
+            ]
+          },
+          "intermediate_data": {
+            "intermediate_responses": [],
+            "tool_uses": [
+              {
+                "name": "run_sql",
+                "args": {
+                  "query": "12320"
+                }
+              },
+              {
+                "name": "search_documents",
+                "args": {
+                  "query": "exception"
+                }
+              }
+            ]
+          },
+          "rubrics": [
+            {
+              "rubric_id": "answer_contains_1",
+              "rubric_content": {
+                "text_property": "Tier 2"
+              },
+              "type": "ANSWER_CONTAINS"
+            },
+            {
+              "rubric_id": "expected_section_1",
+              "rubric_content": {
+                "text_property": "shipment_delay_policy.pdf|5.1"
+              },
+              "type": "EXPECTED_SECTION"
+            }
+          ]
+        }
+      ],
+      "session_input": {
+        "app_name": "data_agent",
+        "user_id": "evaluator",
+        "state": {}
+      }
+    },
+    {
+      "eval_id": "edge_conflicting_docs",
+      "conversation": [
+        {
+          "invocation_id": "inv_001",
+          "user_content": {
+            "role": "user",
+            "parts": [
+              {
+                "text": "When must shipment 12347 be escalated?"
+              }
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": ""
+              }
+            ]
+          },
+          "intermediate_data": {
+            "intermediate_responses": [],
+            "tool_uses": [
+              {
+                "name": "run_sql",
+                "args": {
+                  "query": "12347"
+                }
+              },
+              {
+                "name": "search_documents",
+                "args": {
+                  "query": "international"
+                }
+              }
+            ]
+          },
+          "rubrics": [
+            {
+              "rubric_id": "answer_contains_1",
+              "rubric_content": {
+                "text_property": "5 days"
+              },
+              "type": "ANSWER_CONTAINS"
+            },
+            {
+              "rubric_id": "answer_contains_2",
+              "rubric_content": {
+                "text_property": "7 days"
+              },
+              "type": "ANSWER_CONTAINS"
+            },
+            {
+              "rubric_id": "expected_section_1",
+              "rubric_content": {
+                "text_property": "shipment_delay_policy.pdf|3.3"
+              },
+              "type": "EXPECTED_SECTION"
+            },
+            {
+              "rubric_id": "expected_section_2",
+              "rubric_content": {
+                "text_property": "international_shipping_procedures.txt|4.2"
+              },
+              "type": "EXPECTED_SECTION"
+            }
+          ]
+        }
+      ],
+      "session_input": {
+        "app_name": "data_agent",
+        "user_id": "evaluator",
+        "state": {}
+      }
+    },
+    {
+      "eval_id": "edge_missing_column",
+      "conversation": [
+        {
+          "invocation_id": "inv_001",
+          "user_content": {
+            "role": "user",
+            "parts": [
+              {
+                "text": "What is the weight of shipment 12345?"
+              }
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": ""
+              }
+            ]
+          },
+          "intermediate_data": {
+            "intermediate_responses": [],
+            "tool_uses": []
+          },
+          "rubrics": [
+            {
+              "rubric_id": "answer_contains_1",
+              "rubric_content": {
+                "text_property": "weight"
+              },
+              "type": "ANSWER_CONTAINS"
+            },
+            {
+              "rubric_id": "answer_excludes_1",
+              "rubric_content": {
+                "text_property": "kg"
+              },
+              "type": "ANSWER_EXCLUDES"
+            },
+            {
+              "rubric_id": "answer_excludes_2",
+              "rubric_content": {
+                "text_property": "kilogram"
+              },
+              "type": "ANSWER_EXCLUDES"
+            },
+            {
+              "rubric_id": "answer_excludes_3",
+              "rubric_content": {
+                "text_property": "pounds"
+              },
+              "type": "ANSWER_EXCLUDES"
+            },
+            {
+              "rubric_id": "answer_excludes_4",
+              "rubric_content": {
+                "text_property": "lbs"
+              },
+              "type": "ANSWER_EXCLUDES"
+            }
+          ]
+        }
+      ],
+      "session_input": {
+        "app_name": "data_agent",
+        "user_id": "evaluator",
+        "state": {}
+      }
+    },
+    {
+      "eval_id": "edge_load_notice",
+      "conversation": [
+        {
+          "invocation_id": "inv_001",
+          "user_content": {
+            "role": "user",
+            "parts": [
+              {
+                "text": "How many rows are loaded?"
+              }
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": ""
+              }
+            ]
+          },
+          "intermediate_data": {
+            "intermediate_responses": [],
+            "tool_uses": []
+          },
+          "rubrics": [
+            {
+              "rubric_id": "answer_contains_1",
+              "rubric_content": {
+                "text_property": "corrupt.xlsx"
+              },
+              "type": "ANSWER_CONTAINS"
+            },
+            {
+              "rubric_id": "answer_contains_2",
+              "rubric_content": {
+                "text_property": "could not be loaded"
+              },
+              "type": "ANSWER_CONTAINS"
+            },
+            {
+              "rubric_id": "answer_contains_3",
+              "rubric_content": {
+                "text_property": "60"
+              },
+              "type": "ANSWER_CONTAINS"
+            }
+          ]
+        }
+      ],
+      "session_input": {
+        "app_name": "data_agent",
+        "user_id": "evaluator",
+        "state": {
+          "uploads": [
+            {
+              "name": "corrupt.xlsx",
+              "b64": "VGhpcyBpcyBwbGFpbiB0ZXh0IHJlbmFtZWQgdG8gLnhsc3gNCg=="
+            }
+          ]
+        }
       }
     }
   ]

@@ -1,0 +1,18 @@
+# One case per fixed bug. The id names the bug; the comment links to the fix. Design §3.1.
+suite: regression
+instruction_sha: 27076fc64606
+match: EXACT
+description: "Regression cases, one per fixed bug."
+cases:
+  # dev_docs/errors/adk_web_schema_summary_keyerror.md: `adk web` starts a session with empty state, and the
+  # instruction's {schema_summary} raised KeyError. The default preset is that empty state.
+  - id: reg_empty_state_build
+    layer: regression
+    rules: [1]
+    state: default
+    turns:
+      - q: How many shipments are there?
+        tools:
+          - run_sql: {}
+        contains_sql:
+          - SELECT COUNT(*) FROM data

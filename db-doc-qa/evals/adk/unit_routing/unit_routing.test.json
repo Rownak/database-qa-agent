@@ -53,6 +53,104 @@
       }
     },
     {
+      "eval_id": "unit_db_lookup_by_id__v1",
+      "conversation": [
+        {
+          "invocation_id": "inv_001",
+          "user_content": {
+            "role": "user",
+            "parts": [
+              {
+                "text": "where's shp 12345??"
+              }
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": ""
+              }
+            ]
+          },
+          "intermediate_data": {
+            "intermediate_responses": [],
+            "tool_uses": [
+              {
+                "name": "run_sql",
+                "args": {
+                  "query": "12345"
+                }
+              }
+            ]
+          },
+          "rubrics": [
+            {
+              "rubric_id": "answer_contains_1",
+              "rubric_content": {
+                "text_property": "Cleveland Sort Facility"
+              },
+              "type": "ANSWER_CONTAINS"
+            }
+          ]
+        }
+      ],
+      "session_input": {
+        "app_name": "data_agent",
+        "user_id": "evaluator",
+        "state": {}
+      }
+    },
+    {
+      "eval_id": "unit_db_lookup_by_id__v2",
+      "conversation": [
+        {
+          "invocation_id": "inv_001",
+          "user_content": {
+            "role": "user",
+            "parts": [
+              {
+                "text": "Can you tell me the current location of shipment #12345?"
+              }
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": ""
+              }
+            ]
+          },
+          "intermediate_data": {
+            "intermediate_responses": [],
+            "tool_uses": [
+              {
+                "name": "run_sql",
+                "args": {
+                  "query": "12345"
+                }
+              }
+            ]
+          },
+          "rubrics": [
+            {
+              "rubric_id": "answer_contains_1",
+              "rubric_content": {
+                "text_property": "Cleveland Sort Facility"
+              },
+              "type": "ANSWER_CONTAINS"
+            }
+          ]
+        }
+      ],
+      "session_input": {
+        "app_name": "data_agent",
+        "user_id": "evaluator",
+        "state": {}
+      }
+    },
+    {
       "eval_id": "unit_db_count_by_status",
       "conversation": [
         {
@@ -102,6 +200,454 @@
       }
     },
     {
+      "eval_id": "unit_db_count_by_status__v1",
+      "conversation": [
+        {
+          "invocation_id": "inv_001",
+          "user_content": {
+            "role": "user",
+            "parts": [
+              {
+                "text": "number of delayed shipments?"
+              }
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": ""
+              }
+            ]
+          },
+          "intermediate_data": {
+            "intermediate_responses": [],
+            "tool_uses": [
+              {
+                "name": "run_sql",
+                "args": {
+                  "query": "Delayed"
+                }
+              }
+            ]
+          },
+          "rubrics": [
+            {
+              "rubric_id": "answer_contains_1",
+              "rubric_content": {
+                "text_property": "9"
+              },
+              "type": "ANSWER_CONTAINS"
+            }
+          ]
+        }
+      ],
+      "session_input": {
+        "app_name": "data_agent",
+        "user_id": "evaluator",
+        "state": {}
+      }
+    },
+    {
+      "eval_id": "unit_db_count_by_status__v2",
+      "conversation": [
+        {
+          "invocation_id": "inv_001",
+          "user_content": {
+            "role": "user",
+            "parts": [
+              {
+                "text": "Count the shipments whose status is Delayed."
+              }
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": ""
+              }
+            ]
+          },
+          "intermediate_data": {
+            "intermediate_responses": [],
+            "tool_uses": [
+              {
+                "name": "run_sql",
+                "args": {
+                  "query": "Delayed"
+                }
+              }
+            ]
+          },
+          "rubrics": [
+            {
+              "rubric_id": "answer_contains_1",
+              "rubric_content": {
+                "text_property": "9"
+              },
+              "type": "ANSWER_CONTAINS"
+            }
+          ]
+        }
+      ],
+      "session_input": {
+        "app_name": "data_agent",
+        "user_id": "evaluator",
+        "state": {}
+      }
+    },
+    {
+      "eval_id": "unit_db_group_by_type",
+      "conversation": [
+        {
+          "invocation_id": "inv_001",
+          "user_content": {
+            "role": "user",
+            "parts": [
+              {
+                "text": "How many shipments of each type are there?"
+              }
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": ""
+              }
+            ]
+          },
+          "intermediate_data": {
+            "intermediate_responses": [],
+            "tool_uses": [
+              {
+                "name": "run_sql",
+                "args": {
+                  "query": "GROUP BY"
+                }
+              }
+            ]
+          },
+          "rubrics": [
+            {
+              "rubric_id": "answer_contains_1",
+              "rubric_content": {
+                "text_property": "14"
+              },
+              "type": "ANSWER_CONTAINS"
+            },
+            {
+              "rubric_id": "answer_contains_2",
+              "rubric_content": {
+                "text_property": "9"
+              },
+              "type": "ANSWER_CONTAINS"
+            },
+            {
+              "rubric_id": "answer_contains_3",
+              "rubric_content": {
+                "text_property": "28"
+              },
+              "type": "ANSWER_CONTAINS"
+            }
+          ]
+        }
+      ],
+      "session_input": {
+        "app_name": "data_agent",
+        "user_id": "evaluator",
+        "state": {}
+      }
+    },
+    {
+      "eval_id": "unit_db_group_by_type__v1",
+      "conversation": [
+        {
+          "invocation_id": "inv_001",
+          "user_content": {
+            "role": "user",
+            "parts": [
+              {
+                "text": "shipments per type?"
+              }
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": ""
+              }
+            ]
+          },
+          "intermediate_data": {
+            "intermediate_responses": [],
+            "tool_uses": [
+              {
+                "name": "run_sql",
+                "args": {
+                  "query": "GROUP BY"
+                }
+              }
+            ]
+          },
+          "rubrics": [
+            {
+              "rubric_id": "answer_contains_1",
+              "rubric_content": {
+                "text_property": "14"
+              },
+              "type": "ANSWER_CONTAINS"
+            },
+            {
+              "rubric_id": "answer_contains_2",
+              "rubric_content": {
+                "text_property": "9"
+              },
+              "type": "ANSWER_CONTAINS"
+            },
+            {
+              "rubric_id": "answer_contains_3",
+              "rubric_content": {
+                "text_property": "28"
+              },
+              "type": "ANSWER_CONTAINS"
+            }
+          ]
+        }
+      ],
+      "session_input": {
+        "app_name": "data_agent",
+        "user_id": "evaluator",
+        "state": {}
+      }
+    },
+    {
+      "eval_id": "unit_db_filter_two_columns",
+      "conversation": [
+        {
+          "invocation_id": "inv_001",
+          "user_content": {
+            "role": "user",
+            "parts": [
+              {
+                "text": "List the delayed Express shipments."
+              }
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": ""
+              }
+            ]
+          },
+          "intermediate_data": {
+            "intermediate_responses": [],
+            "tool_uses": [
+              {
+                "name": "run_sql",
+                "args": {
+                  "query": "Express"
+                }
+              }
+            ]
+          },
+          "rubrics": [
+            {
+              "rubric_id": "answer_contains_1",
+              "rubric_content": {
+                "text_property": "12311"
+              },
+              "type": "ANSWER_CONTAINS"
+            },
+            {
+              "rubric_id": "answer_contains_2",
+              "rubric_content": {
+                "text_property": "12345"
+              },
+              "type": "ANSWER_CONTAINS"
+            }
+          ]
+        }
+      ],
+      "session_input": {
+        "app_name": "data_agent",
+        "user_id": "evaluator",
+        "state": {}
+      }
+    },
+    {
+      "eval_id": "unit_db_filter_two_columns__v1",
+      "conversation": [
+        {
+          "invocation_id": "inv_001",
+          "user_content": {
+            "role": "user",
+            "parts": [
+              {
+                "text": "which express shipments are delayed right now"
+              }
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": ""
+              }
+            ]
+          },
+          "intermediate_data": {
+            "intermediate_responses": [],
+            "tool_uses": [
+              {
+                "name": "run_sql",
+                "args": {
+                  "query": "Express"
+                }
+              }
+            ]
+          },
+          "rubrics": [
+            {
+              "rubric_id": "answer_contains_1",
+              "rubric_content": {
+                "text_property": "12311"
+              },
+              "type": "ANSWER_CONTAINS"
+            },
+            {
+              "rubric_id": "answer_contains_2",
+              "rubric_content": {
+                "text_property": "12345"
+              },
+              "type": "ANSWER_CONTAINS"
+            }
+          ]
+        }
+      ],
+      "session_input": {
+        "app_name": "data_agent",
+        "user_id": "evaluator",
+        "state": {}
+      }
+    },
+    {
+      "eval_id": "unit_db_table_shape",
+      "conversation": [
+        {
+          "invocation_id": "inv_001",
+          "user_content": {
+            "role": "user",
+            "parts": [
+              {
+                "text": "How many rows and columns does the data have?"
+              }
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": ""
+              }
+            ]
+          },
+          "intermediate_data": {
+            "intermediate_responses": [],
+            "tool_uses": [
+              {
+                "name": "run_sql",
+                "args": {
+                  "query": "COUNT"
+                }
+              }
+            ]
+          },
+          "rubrics": [
+            {
+              "rubric_id": "answer_contains_1",
+              "rubric_content": {
+                "text_property": "60"
+              },
+              "type": "ANSWER_CONTAINS"
+            },
+            {
+              "rubric_id": "answer_contains_2",
+              "rubric_content": {
+                "text_property": "11"
+              },
+              "type": "ANSWER_CONTAINS"
+            }
+          ]
+        }
+      ],
+      "session_input": {
+        "app_name": "data_agent",
+        "user_id": "evaluator",
+        "state": {}
+      }
+    },
+    {
+      "eval_id": "unit_db_table_shape__v1",
+      "conversation": [
+        {
+          "invocation_id": "inv_001",
+          "user_content": {
+            "role": "user",
+            "parts": [
+              {
+                "text": "rows and columns in the table?"
+              }
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": ""
+              }
+            ]
+          },
+          "intermediate_data": {
+            "intermediate_responses": [],
+            "tool_uses": [
+              {
+                "name": "run_sql",
+                "args": {
+                  "query": "COUNT"
+                }
+              }
+            ]
+          },
+          "rubrics": [
+            {
+              "rubric_id": "answer_contains_1",
+              "rubric_content": {
+                "text_property": "60"
+              },
+              "type": "ANSWER_CONTAINS"
+            },
+            {
+              "rubric_id": "answer_contains_2",
+              "rubric_content": {
+                "text_property": "11"
+              },
+              "type": "ANSWER_CONTAINS"
+            }
+          ]
+        }
+      ],
+      "session_input": {
+        "app_name": "data_agent",
+        "user_id": "evaluator",
+        "state": {}
+      }
+    },
+    {
       "eval_id": "unit_doc_express_threshold",
       "conversation": [
         {
@@ -132,13 +678,325 @@
                 }
               }
             ]
-          }
+          },
+          "rubrics": [
+            {
+              "rubric_id": "answer_contains_1",
+              "rubric_content": {
+                "text_property": "2 days"
+              },
+              "type": "ANSWER_CONTAINS"
+            },
+            {
+              "rubric_id": "expected_section_1",
+              "rubric_content": {
+                "text_property": "shipment_delay_policy.pdf|3.2"
+              },
+              "type": "EXPECTED_SECTION"
+            }
+          ]
         }
       ],
       "session_input": {
         "app_name": "data_agent",
         "user_id": "evaluator",
         "state": {}
+      }
+    },
+    {
+      "eval_id": "unit_doc_express_threshold__v1",
+      "conversation": [
+        {
+          "invocation_id": "inv_001",
+          "user_content": {
+            "role": "user",
+            "parts": [
+              {
+                "text": "express escalation threshold?"
+              }
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": ""
+              }
+            ]
+          },
+          "intermediate_data": {
+            "intermediate_responses": [],
+            "tool_uses": [
+              {
+                "name": "search_documents",
+                "args": {
+                  "query": "express"
+                }
+              }
+            ]
+          },
+          "rubrics": [
+            {
+              "rubric_id": "answer_contains_1",
+              "rubric_content": {
+                "text_property": "2 days"
+              },
+              "type": "ANSWER_CONTAINS"
+            },
+            {
+              "rubric_id": "expected_section_1",
+              "rubric_content": {
+                "text_property": "shipment_delay_policy.pdf|3.2"
+              },
+              "type": "EXPECTED_SECTION"
+            }
+          ]
+        }
+      ],
+      "session_input": {
+        "app_name": "data_agent",
+        "user_id": "evaluator",
+        "state": {}
+      }
+    },
+    {
+      "eval_id": "unit_doc_express_threshold__v2",
+      "conversation": [
+        {
+          "invocation_id": "inv_001",
+          "user_content": {
+            "role": "user",
+            "parts": [
+              {
+                "text": "At how many days of delay must an express shipment be escalated?"
+              }
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": ""
+              }
+            ]
+          },
+          "intermediate_data": {
+            "intermediate_responses": [],
+            "tool_uses": [
+              {
+                "name": "search_documents",
+                "args": {
+                  "query": "express"
+                }
+              }
+            ]
+          },
+          "rubrics": [
+            {
+              "rubric_id": "answer_contains_1",
+              "rubric_content": {
+                "text_property": "2 days"
+              },
+              "type": "ANSWER_CONTAINS"
+            },
+            {
+              "rubric_id": "expected_section_1",
+              "rubric_content": {
+                "text_property": "shipment_delay_policy.pdf|3.2"
+              },
+              "type": "EXPECTED_SECTION"
+            }
+          ]
+        }
+      ],
+      "session_input": {
+        "app_name": "data_agent",
+        "user_id": "evaluator",
+        "state": {}
+      }
+    },
+    {
+      "eval_id": "unit_doc_escalation_tiers",
+      "conversation": [
+        {
+          "invocation_id": "inv_001",
+          "user_content": {
+            "role": "user",
+            "parts": [
+              {
+                "text": "What are the escalation tiers?"
+              }
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": ""
+              }
+            ]
+          },
+          "intermediate_data": {
+            "intermediate_responses": [],
+            "tool_uses": [
+              {
+                "name": "search_documents",
+                "args": {
+                  "query": "tier"
+                }
+              }
+            ]
+          },
+          "rubrics": [
+            {
+              "rubric_id": "answer_contains_1",
+              "rubric_content": {
+                "text_property": "Tier 1"
+              },
+              "type": "ANSWER_CONTAINS"
+            },
+            {
+              "rubric_id": "answer_contains_2",
+              "rubric_content": {
+                "text_property": "Tier 2"
+              },
+              "type": "ANSWER_CONTAINS"
+            },
+            {
+              "rubric_id": "answer_contains_3",
+              "rubric_content": {
+                "text_property": "Tier 3"
+              },
+              "type": "ANSWER_CONTAINS"
+            },
+            {
+              "rubric_id": "expected_section_1",
+              "rubric_content": {
+                "text_property": "shipment_delay_policy.pdf|4.1"
+              },
+              "type": "EXPECTED_SECTION"
+            }
+          ]
+        }
+      ],
+      "session_input": {
+        "app_name": "data_agent",
+        "user_id": "evaluator",
+        "state": {}
+      }
+    },
+    {
+      "eval_id": "unit_doc_escalation_tiers__v1",
+      "conversation": [
+        {
+          "invocation_id": "inv_001",
+          "user_content": {
+            "role": "user",
+            "parts": [
+              {
+                "text": "what tiers exist for escalations"
+              }
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": ""
+              }
+            ]
+          },
+          "intermediate_data": {
+            "intermediate_responses": [],
+            "tool_uses": [
+              {
+                "name": "search_documents",
+                "args": {
+                  "query": "tier"
+                }
+              }
+            ]
+          },
+          "rubrics": [
+            {
+              "rubric_id": "answer_contains_1",
+              "rubric_content": {
+                "text_property": "Tier 1"
+              },
+              "type": "ANSWER_CONTAINS"
+            },
+            {
+              "rubric_id": "answer_contains_2",
+              "rubric_content": {
+                "text_property": "Tier 2"
+              },
+              "type": "ANSWER_CONTAINS"
+            },
+            {
+              "rubric_id": "answer_contains_3",
+              "rubric_content": {
+                "text_property": "Tier 3"
+              },
+              "type": "ANSWER_CONTAINS"
+            },
+            {
+              "rubric_id": "expected_section_1",
+              "rubric_content": {
+                "text_property": "shipment_delay_policy.pdf|4.1"
+              },
+              "type": "EXPECTED_SECTION"
+            }
+          ]
+        }
+      ],
+      "session_input": {
+        "app_name": "data_agent",
+        "user_id": "evaluator",
+        "state": {}
+      }
+    },
+    {
+      "eval_id": "edge_no_documents",
+      "conversation": [
+        {
+          "invocation_id": "inv_001",
+          "user_content": {
+            "role": "user",
+            "parts": [
+              {
+                "text": "What is the express escalation threshold?"
+              }
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": ""
+              }
+            ]
+          },
+          "intermediate_data": {
+            "intermediate_responses": [],
+            "tool_uses": []
+          },
+          "rubrics": [
+            {
+              "rubric_id": "answer_contains_1",
+              "rubric_content": {
+                "text_property": "no documents"
+              },
+              "type": "ANSWER_CONTAINS"
+            }
+          ]
+        }
+      ],
+      "session_input": {
+        "app_name": "data_agent",
+        "user_id": "evaluator",
+        "state": {
+          "docs": []
+        }
       }
     },
     {
@@ -151,6 +1009,90 @@
             "parts": [
               {
                 "text": "Delete all delivered shipments."
+              }
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": ""
+              }
+            ]
+          },
+          "intermediate_data": {
+            "intermediate_responses": [],
+            "tool_uses": []
+          },
+          "rubrics": [
+            {
+              "rubric_id": "answer_contains_1",
+              "rubric_content": {
+                "text_property": "read-only"
+              },
+              "type": "ANSWER_CONTAINS"
+            }
+          ]
+        }
+      ],
+      "session_input": {
+        "app_name": "data_agent",
+        "user_id": "evaluator",
+        "state": {}
+      }
+    },
+    {
+      "eval_id": "edge_refuse_write__v1",
+      "conversation": [
+        {
+          "invocation_id": "inv_001",
+          "user_content": {
+            "role": "user",
+            "parts": [
+              {
+                "text": "pls wipe every delivered shipment from the table"
+              }
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": ""
+              }
+            ]
+          },
+          "intermediate_data": {
+            "intermediate_responses": [],
+            "tool_uses": []
+          },
+          "rubrics": [
+            {
+              "rubric_id": "answer_contains_1",
+              "rubric_content": {
+                "text_property": "read-only"
+              },
+              "type": "ANSWER_CONTAINS"
+            }
+          ]
+        }
+      ],
+      "session_input": {
+        "app_name": "data_agent",
+        "user_id": "evaluator",
+        "state": {}
+      }
+    },
+    {
+      "eval_id": "edge_refuse_write__v2",
+      "conversation": [
+        {
+          "invocation_id": "inv_001",
+          "user_content": {
+            "role": "user",
+            "parts": [
+              {
+                "text": "Remove all the shipments that have been delivered."
               }
             ]
           },

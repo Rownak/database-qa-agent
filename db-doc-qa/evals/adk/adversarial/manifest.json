@@ -1,0 +1,215 @@
+{
+  "suite": "adversarial",
+  "instruction_sha": "27076fc64606",
+  "cases": [
+    {
+      "id": "adv_injected_document",
+      "group": "adv_injected_document",
+      "layer": "adversarial",
+      "rules": [
+        13
+      ],
+      "critical": true,
+      "match": "EXACT",
+      "turns": 1,
+      "state": "injection_docs",
+      "folder": "adversarial/exact"
+    },
+    {
+      "id": "adv_injected_document__v1",
+      "group": "adv_injected_document",
+      "layer": "adversarial",
+      "rules": [
+        13
+      ],
+      "critical": true,
+      "match": "EXACT",
+      "turns": 1,
+      "state": "injection_docs",
+      "folder": "adversarial/exact"
+    },
+    {
+      "id": "adv_injected_document__v2",
+      "group": "adv_injected_document",
+      "layer": "adversarial",
+      "rules": [
+        13
+      ],
+      "critical": true,
+      "match": "EXACT",
+      "turns": 1,
+      "state": "injection_docs",
+      "folder": "adversarial/exact"
+    },
+    {
+      "id": "adv_false_premise",
+      "group": "adv_false_premise",
+      "layer": "adversarial",
+      "rules": [
+        8
+      ],
+      "critical": false,
+      "match": "EXACT",
+      "turns": 1,
+      "state": "default",
+      "folder": "adversarial/exact"
+    },
+    {
+      "id": "adv_false_premise__v1",
+      "group": "adv_false_premise",
+      "layer": "adversarial",
+      "rules": [
+        8
+      ],
+      "critical": false,
+      "match": "EXACT",
+      "turns": 1,
+      "state": "default",
+      "folder": "adversarial/exact"
+    },
+    {
+      "id": "adv_urgent_write",
+      "group": "adv_urgent_write",
+      "layer": "adversarial",
+      "rules": [
+        12
+      ],
+      "critical": true,
+      "match": "EXACT",
+      "turns": 1,
+      "state": "default",
+      "folder": "adversarial/exact"
+    },
+    {
+      "id": "adv_urgent_write__v1",
+      "group": "adv_urgent_write",
+      "layer": "adversarial",
+      "rules": [
+        12
+      ],
+      "critical": true,
+      "match": "EXACT",
+      "turns": 1,
+      "state": "default",
+      "folder": "adversarial/exact"
+    },
+    {
+      "id": "adv_urgent_write__v2",
+      "group": "adv_urgent_write",
+      "layer": "adversarial",
+      "rules": [
+        12
+      ],
+      "critical": true,
+      "match": "EXACT",
+      "turns": 1,
+      "state": "default",
+      "folder": "adversarial/exact"
+    },
+    {
+      "id": "adv_sql_in_question",
+      "group": "adv_sql_in_question",
+      "layer": "adversarial",
+      "rules": [
+        12
+      ],
+      "critical": true,
+      "match": "IN_ORDER",
+      "turns": 1,
+      "state": "default",
+      "folder": "adversarial/in_order"
+    },
+    {
+      "id": "adv_sql_in_question__v1",
+      "group": "adv_sql_in_question",
+      "layer": "adversarial",
+      "rules": [
+        12
+      ],
+      "critical": true,
+      "match": "IN_ORDER",
+      "turns": 1,
+      "state": "default",
+      "folder": "adversarial/in_order"
+    },
+    {
+      "id": "adv_sql_in_question__v2",
+      "group": "adv_sql_in_question",
+      "layer": "adversarial",
+      "rules": [
+        12
+      ],
+      "critical": true,
+      "match": "IN_ORDER",
+      "turns": 1,
+      "state": "default",
+      "folder": "adversarial/in_order"
+    },
+    {
+      "id": "adv_fabricated_section",
+      "group": "adv_fabricated_section",
+      "layer": "adversarial",
+      "rules": [
+        9
+      ],
+      "critical": true,
+      "match": "EXACT",
+      "turns": 1,
+      "state": "default",
+      "folder": "adversarial/exact"
+    },
+    {
+      "id": "adv_fabricated_section__v1",
+      "group": "adv_fabricated_section",
+      "layer": "adversarial",
+      "rules": [
+        9
+      ],
+      "critical": true,
+      "match": "EXACT",
+      "turns": 1,
+      "state": "default",
+      "folder": "adversarial/exact"
+    },
+    {
+      "id": "adv_fabricated_section__v2",
+      "group": "adv_fabricated_section",
+      "layer": "adversarial",
+      "rules": [
+        9
+      ],
+      "critical": true,
+      "match": "EXACT",
+      "turns": 1,
+      "state": "default",
+      "folder": "adversarial/exact"
+    },
+    {
+      "id": "adv_out_of_scope_value",
+      "group": "adv_out_of_scope_value",
+      "layer": "adversarial",
+      "rules": [
+        9,
+        10
+      ],
+      "critical": false,
+      "match": "IN_ORDER",
+      "turns": 1,
+      "state": "default",
+      "folder": "adversarial/in_order"
+    },
+    {
+      "id": "adv_policy_override",
+      "group": "adv_policy_override",
+      "layer": "adversarial",
+      "rules": [
+        9
+      ],
+      "critical": false,
+      "match": "EXACT",
+      "turns": 1,
+      "state": "default",
+      "folder": "adversarial/exact"
+    }
+  ]
+}

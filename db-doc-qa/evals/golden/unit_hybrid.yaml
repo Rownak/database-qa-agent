@@ -1,38 +1,62 @@
-# Questions needing SQL and documents: golden calls in order, extras allowed (IN_ORDER).
-# Migrated from the Sprint 10 `hybrid` set; ids carry the layer prefix.
+# Questions needing SQL and documents: golden calls in order, extras allowed (IN_ORDER). Design §3.1.
+# `trajectory: any` states on purpose that a turn with no golden tools accepts any tool use.
 suite: unit_hybrid
 instruction_sha: 27076fc64606
 match: IN_ORDER
 description: "Questions needing SQL and documents: golden calls in order, extras allowed (IN_ORDER)."
 cases:
-  - id: unit_hybrid_record_to_policy   # was hybrid_delayed_express
+  - id: unit_hybrid_record_to_policy
     layer: unit
     rules: [2]
+    variants: ["shp 12345 is delayed, what do i do?", "Shipment 12345 is running late. What is the right next step?"]
     turns:
       - q: Shipment 12345 is delayed. What should I do?
         tools:
           - run_sql: {query: "12345"}
           - search_documents: {query: express}
+        contains: ["Tier 2"]
+        sections:
+          - {source: shipment_delay_policy.pdf, section: "3.2"}
 
-  - id: edge_conflicting_docs          # was conflict_international
-    layer: edge
-    rules: [7]
+  - id: unit_hybrid_policy_then_filter
+    layer: unit
+    rules: [3]
+    variants: ["express shipments over their escalation limit - which ones?"]
     turns:
-      - q: When must shipment 12347 be escalated?
+      - q: Which express shipments are past their escalation threshold?
+        tools:
+          - search_documents: {query: express}
+          - run_sql: {query: "Express"}
+        contains_sql:
+          - SELECT shipment_id FROM data WHERE status = 'Delayed' AND shipment_type = 'Express' ORDER BY 1
+        sections:
+          - {source: shipment_delay_policy.pdf, section: "3.2"}
+
+  - id: unit_hybrid_customs_record
+    layer: unit
+    rules: [2]
+    variants: ["12347 is stuck in customs, what should we say to the customer?"]
+    turns:
+      - q: Shipment 12347 is on customs hold. What do we tell the customer?
         tools:
           - run_sql: {query: "12347"}
-          - search_documents: {query: international}
+          - search_documents: {query: customs}
+        sections:
+          - {source: international_shipping_procedures.txt, section: "3.2"}
+          - {source: customer_communication_guidelines.pdf, section: "2.3"}
 
-  - id: edge_no_type_rule              # was no_policy_refrigerated
-    layer: edge
-    rules: [2, 6]
+  - id: unit_doc_customs_handling
+    layer: unit
+    rules: [1]
+    variants: ["steps for a customs hold?"]
     turns:
-      - q: Shipment 12349 is delayed. What should I do?
+      - q: How should a customs hold be handled?
         tools:
-          - run_sql: {query: "12349"}
-          - search_documents: {query: refrigerated}
+          - search_documents: {query: customs}
+        sections:
+          - {source: international_shipping_procedures.txt, section: "3.2"}
 
-  - id: edge_record_not_found          # was record_not_found
+  - id: edge_record_not_found
     layer: edge
     rules: [5]
     turns:
@@ -40,12 +64,63 @@ cases:
         tools:
           - run_sql: {query: "99999"}
           - search_documents: {query: delay}
+        contains: ["general guidance"]
 
-  - id: unit_hybrid_policy_then_filter # was threshold_first
-    layer: unit
-    rules: [3]
+  - id: edge_no_type_rule
+    layer: edge
+    rules: [2, 6]
     turns:
-      - q: Which express shipments are past their escalation threshold?
+      - q: Shipment 12349 is delayed. What should I do?
         tools:
-          - search_documents: {query: express}
-          - run_sql: {query: "Express"}
+          - run_sql: {query: "12349"}
+          - search_documents: {query: refrigerated}
+        contains: ["4 days"]
+        sections:
+          - {source: shipment_delay_policy.pdf, section: "2.4"}
+
+  - id: edge_exception_status
+    layer: edge
+    rules: [2]
+    turns:
+      - q: Shipment 12320 is in Exception status. What applies?
+        tools:
+          - run_sql: {query: "12320"}
+          - search_documents: {query: exception}
+        contains: ["Tier 2"]
+        sections:
+          - {source: shipment_delay_policy.pdf, section: "5.1"}
+
+  - id: edge_conflicting_docs
+    layer: edge
+    rules: [7]
+    turns:
+      - q: When must shipment 12347 be escalated?
+        tools:
+          - run_sql: {query: "12347"}
+          - search_documents: {query: international}
+        contains: ["5 days", "7 days"]
+        sections:
+          - {source: shipment_delay_policy.pdf, section: "3.3"}
+          - {source: international_shipping_procedures.txt, section: "4.2"}
+
+  - id: edge_missing_column
+    layer: edge
+    rules: [10]
+    trajectory: any
+    turns:
+      - q: What is the weight of shipment 12345?
+        tools: []
+        contains: ["weight"]
+        excludes: ["kg", "kilogram", "pounds", "lbs"]
+
+  - id: edge_load_notice
+    layer: edge
+    rules: [14]
+    state: corrupt_upload
+    trajectory: any
+    turns:
+      - q: How many rows are loaded?
+        tools: []
+        contains: ["corrupt.xlsx", "could not be loaded"]
+        contains_sql:
+          - SELECT COUNT(*) FROM data

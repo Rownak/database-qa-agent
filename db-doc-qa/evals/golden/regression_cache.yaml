@@ -1,0 +1,22 @@
+# Regression cases that need the session-scoped response cache (configs/eval/cache_session.yaml). Design §3.1.
+suite: regression_cache
+instruction_sha: 27076fc64606
+match: EXACT
+description: "Regression cases run with the session-scoped response cache on."
+cases:
+  # Sprint 9 (dev_docs/execution_logs/sprint_9_1.md): a follow-up depends on the conversation, so it must
+  # bypass the response cache. A cache hit would answer turn 2 with no tool call, which EXACT rejects.
+  - id: reg_followup_not_cached
+    layer: regression
+    rules: [1]
+    turns:
+      - q: How many shipments are delayed?
+        tools:
+          - run_sql: {query: "Delayed"}
+        contains_sql:
+          - SELECT COUNT(*) FROM data WHERE status = 'Delayed'
+      - q: How many shipments are delayed?
+        tools:
+          - run_sql: {query: "Delayed"}
+        contains_sql:
+          - SELECT COUNT(*) FROM data WHERE status = 'Delayed'

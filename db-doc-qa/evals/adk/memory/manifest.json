@@ -1,0 +1,86 @@
+{
+  "suite": "memory",
+  "instruction_sha": "27076fc64606",
+  "cases": [
+    {
+      "id": "mem_followup_pronoun",
+      "group": "mem_followup_pronoun",
+      "layer": "memory",
+      "rules": [
+        1,
+        2
+      ],
+      "critical": false,
+      "match": "IN_ORDER",
+      "turns": 2,
+      "state": "default",
+      "folder": "memory"
+    },
+    {
+      "id": "mem_constraint_retention",
+      "group": "mem_constraint_retention",
+      "layer": "memory",
+      "rules": [
+        1,
+        3
+      ],
+      "critical": false,
+      "match": "IN_ORDER",
+      "turns": 4,
+      "state": "default",
+      "folder": "memory"
+    },
+    {
+      "id": "mem_entity_switch",
+      "group": "mem_entity_switch",
+      "layer": "memory",
+      "rules": [
+        1
+      ],
+      "critical": false,
+      "match": "IN_ORDER",
+      "turns": 2,
+      "state": "default",
+      "folder": "memory"
+    },
+    {
+      "id": "mem_refusal_persists",
+      "group": "mem_refusal_persists",
+      "layer": "memory",
+      "rules": [
+        12
+      ],
+      "critical": true,
+      "match": "IN_ORDER",
+      "turns": 2,
+      "state": "default",
+      "folder": "memory"
+    },
+    {
+      "id": "mem_refusal_persists__v1",
+      "group": "mem_refusal_persists",
+      "layer": "memory",
+      "rules": [
+        12
+      ],
+      "critical": true,
+      "match": "IN_ORDER",
+      "turns": 2,
+      "state": "default",
+      "folder": "memory"
+    },
+    {
+      "id": "mem_refusal_persists__v2",
+      "group": "mem_refusal_persists",
+      "layer": "memory",
+      "rules": [
+        12
+      ],
+      "critical": true,
+      "match": "IN_ORDER",
+      "turns": 2,
+      "state": "default",
+      "folder": "memory"
+    }
+  ]
+}
