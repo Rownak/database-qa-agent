@@ -4,7 +4,7 @@ from google.adk.evaluation.eval_set import EvalSet
 
 ADK_DIR = Path(__file__).resolve().parent.parent / "evals" / "adk"
 
-for folder in ("routing", "hybrid"):
+for folder in ("unit_routing", "unit_hybrid"):
     eval_set = EvalSet.model_validate_json((ADK_DIR / folder / f"{folder}.test.json").read_text(encoding="utf-8"))
     print(f"[{folder}] {eval_set.eval_set_id}")
     for case in eval_set.eval_cases:

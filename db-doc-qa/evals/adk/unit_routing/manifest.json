@@ -1,0 +1,58 @@
+{
+  "suite": "unit_routing",
+  "instruction_sha": "27076fc64606",
+  "cases": [
+    {
+      "id": "unit_db_lookup_by_id",
+      "group": "unit_db_lookup_by_id",
+      "layer": "unit",
+      "rules": [
+        1
+      ],
+      "critical": false,
+      "match": "EXACT",
+      "turns": 1,
+      "state": "default",
+      "folder": "unit_routing"
+    },
+    {
+      "id": "unit_db_count_by_status",
+      "group": "unit_db_count_by_status",
+      "layer": "unit",
+      "rules": [
+        1
+      ],
+      "critical": false,
+      "match": "EXACT",
+      "turns": 1,
+      "state": "default",
+      "folder": "unit_routing"
+    },
+    {
+      "id": "unit_doc_express_threshold",
+      "group": "unit_doc_express_threshold",
+      "layer": "unit",
+      "rules": [
+        1
+      ],
+      "critical": false,
+      "match": "EXACT",
+      "turns": 1,
+      "state": "default",
+      "folder": "unit_routing"
+    },
+    {
+      "id": "edge_refuse_write",
+      "group": "edge_refuse_write",
+      "layer": "edge",
+      "rules": [
+        12
+      ],
+      "critical": true,
+      "match": "EXACT",
+      "turns": 1,
+      "state": "default",
+      "folder": "unit_routing"
+    }
+  ]
+}

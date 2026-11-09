@@ -52,7 +52,7 @@ def test_smoke_fixture_applies_eval_settings(smoke_agent):
 
 
 @live
-@pytest.mark.parametrize("folder", ["routing", "hybrid"])
+@pytest.mark.parametrize("folder", ["unit_routing", "unit_hybrid"])
 def test_tool_trajectory(folder, smoke_agent):
     """Every case of the eval set matches its golden trajectory in all ``NUM_RUNS`` runs."""
     history = LocalEvalSetResultsManager(str(ROOT))  # writes data_agent/.adk/eval_history, as `adk eval` does

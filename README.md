@@ -118,7 +118,7 @@ The summary prints a `stage p50` line and per-tag latency. Each `results.jsonl` 
 
 ### ADK tool evaluation
 
-A regression test of which tools the agent calls, built from native ADK eval sets (`db-doc-qa/evals/adk/`: `routing` is an exact match, `hybrid` an in-order match; tool names only, scored by `tool_trajectory_avg_score`). It needs the API key and the dev dependencies (`uv sync`), and costs model calls.
+A regression test of which tools the agent calls, built from native ADK eval sets (`db-doc-qa/evals/adk/`: `unit_routing` is an exact match, `unit_hybrid` an in-order match; tool names only, scored by `tool_trajectory_avg_score`). It needs the API key and the dev dependencies (`uv sync`), and costs model calls.
 
 ```bash
 # pytest gate: each set runs 3 times and every case must match every time (opt-in, billed)
@@ -126,7 +126,7 @@ RUN_ADK_EVAL=1 uv run pytest tests/test_adk_eval.py -v
 
 # ADK CLI, one eval set at a time (results go to data_agent/.adk/eval_history)
 PYTHONPATH=. DATA_AGENT_CONFIG=configs/eval/smoke.yaml uv run adk eval data_agent \
-  evals/adk/routing/routing.test.json --config_file_path evals/adk/routing/test_config.json --print_detailed_results
+  evals/adk/unit_routing/unit_routing.test.json --config_file_path evals/adk/unit_routing/test_config.json --print_detailed_results
 ```
 
 `uv run python -m dev_test.phase_10_3` prints a scorecard (trajectory and argument scores per case, worst run) from the saved results. A plain `uv run pytest` skips the live tests. Rerun after any change to the agent instruction, a tool's name, signature or docstring, the intent prompt, or the model version. Design: [adk_tool_evaluation_design.md](dev_docs/design/adk_tool_evaluation_design.md).
@@ -228,12 +228,13 @@ Three caches, each built and then measured on LakeQuest. Design: [caching_design
 
 ## ADK tool evaluation (Sprint 10)
 
-A regression test of which tools the agent calls, using native ADK eval sets in `db-doc-qa/evals/adk/` (9 shipment cases: `routing` is an exact match, `hybrid` an in-order match) plus a custom check that the SQL/search arguments contain the expected fragments. Design: [adk_tool_evaluation_design.md](dev_docs/design/adk_tool_evaluation_design.md).
+A regression test of which tools the agent calls, using native ADK eval sets in `db-doc-qa/evals/adk/` (9 shipment cases: `unit_routing` is an exact match, `unit_hybrid` an in-order match) plus a custom check that the SQL/search arguments contain the expected fragments. Design: [adk_tool_evaluation_design.md](dev_docs/design/adk_tool_evaluation_design.md).
 
 ```bash
 # from db-doc-qa/; needs the API key and `uv sync` (dev group includes google-adk[eval])
 RUN_ADK_EVAL=1 uv run pytest tests/test_adk_eval.py -v   # opt-in gate, 3 runs per case, billed
 uv run python -m dev_test.phase_10_3                     # scorecard from data_agent/.adk/eval_history
+uv run python -m evals.adk.build                       # golden YAML (evals/golden/) -> eval sets + rule coverage matrix
 ```
 
 A plain `uv run pytest` skips the live gate. Rerun after any change to the instruction, tool docstrings, intent prompt or model. **Status:** the sets and tests are built; live runs are pending (Gemini credits exhausted), so no pass rate is reported yet.

@@ -17,13 +17,13 @@ try:
     asyncio.run(
         AgentEvaluator.evaluate(
             "data_agent",
-            str(ROOT / "evals" / "adk" / "routing"),
+            str(ROOT / "evals" / "adk" / "unit_routing"),
             num_runs=1,
             app_name="data_agent",
             eval_set_results_manager=LocalEvalSetResultsManager(str(ROOT)),
         )
     )
-    print("routing: PASS (all cases matched their golden tool trajectory)")
+    print("unit_routing: PASS (all cases matched their golden tool trajectory)")
 except AssertionError as exc:
-    print("routing: FAIL")
+    print("unit_routing: FAIL")
     print(str(exc)[:1500])

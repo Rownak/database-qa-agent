@@ -1,10 +1,10 @@
 {
-  "eval_set_id": "shipments_hybrid",
-  "name": "Shipment tool routing (hybrid)",
-  "description": "Questions needing SQL and documents: golden calls in order, extras allowed (IN_ORDER).",
+  "eval_set_id": "unit_routing",
+  "name": "unit_routing",
+  "description": "Single-intent questions: exactly the expected tools, no extras (EXACT).",
   "eval_cases": [
     {
-      "eval_id": "hybrid_delayed_express",
+      "eval_id": "unit_db_lookup_by_id",
       "conversation": [
         {
           "invocation_id": "inv_001",
@@ -12,7 +12,7 @@
             "role": "user",
             "parts": [
               {
-                "text": "Shipment 12345 is delayed. What should I do?"
+                "text": "Where is shipment 12345?"
               }
             ]
           },
@@ -32,15 +32,18 @@
                 "args": {
                   "query": "12345"
                 }
-              },
-              {
-                "name": "search_documents",
-                "args": {
-                  "query": "express"
-                }
               }
             ]
-          }
+          },
+          "rubrics": [
+            {
+              "rubric_id": "answer_contains_1",
+              "rubric_content": {
+                "text_property": "Cleveland Sort Facility"
+              },
+              "type": "ANSWER_CONTAINS"
+            }
+          ]
         }
       ],
       "session_input": {
@@ -50,7 +53,7 @@
       }
     },
     {
-      "eval_id": "conflict_international",
+      "eval_id": "unit_db_count_by_status",
       "conversation": [
         {
           "invocation_id": "inv_001",
@@ -58,7 +61,7 @@
             "role": "user",
             "parts": [
               {
-                "text": "When must shipment 12347 be escalated?"
+                "text": "How many shipments are delayed?"
               }
             ]
           },
@@ -76,17 +79,20 @@
               {
                 "name": "run_sql",
                 "args": {
-                  "query": "12347"
-                }
-              },
-              {
-                "name": "search_documents",
-                "args": {
-                  "query": "international"
+                  "query": "Delayed"
                 }
               }
             ]
-          }
+          },
+          "rubrics": [
+            {
+              "rubric_id": "answer_contains_1",
+              "rubric_content": {
+                "text_property": "9"
+              },
+              "type": "ANSWER_CONTAINS"
+            }
+          ]
         }
       ],
       "session_input": {
@@ -96,7 +102,7 @@
       }
     },
     {
-      "eval_id": "no_policy_refrigerated",
+      "eval_id": "unit_doc_express_threshold",
       "conversation": [
         {
           "invocation_id": "inv_001",
@@ -104,99 +110,7 @@
             "role": "user",
             "parts": [
               {
-                "text": "Shipment 12349 is delayed. What should I do?"
-              }
-            ]
-          },
-          "final_response": {
-            "role": "model",
-            "parts": [
-              {
-                "text": ""
-              }
-            ]
-          },
-          "intermediate_data": {
-            "intermediate_responses": [],
-            "tool_uses": [
-              {
-                "name": "run_sql",
-                "args": {
-                  "query": "12349"
-                }
-              },
-              {
-                "name": "search_documents",
-                "args": {
-                  "query": "refrigerated"
-                }
-              }
-            ]
-          }
-        }
-      ],
-      "session_input": {
-        "app_name": "data_agent",
-        "user_id": "evaluator",
-        "state": {}
-      }
-    },
-    {
-      "eval_id": "record_not_found",
-      "conversation": [
-        {
-          "invocation_id": "inv_001",
-          "user_content": {
-            "role": "user",
-            "parts": [
-              {
-                "text": "Shipment 99999 is delayed. What should I do?"
-              }
-            ]
-          },
-          "final_response": {
-            "role": "model",
-            "parts": [
-              {
-                "text": ""
-              }
-            ]
-          },
-          "intermediate_data": {
-            "intermediate_responses": [],
-            "tool_uses": [
-              {
-                "name": "run_sql",
-                "args": {
-                  "query": "99999"
-                }
-              },
-              {
-                "name": "search_documents",
-                "args": {
-                  "query": "delay"
-                }
-              }
-            ]
-          }
-        }
-      ],
-      "session_input": {
-        "app_name": "data_agent",
-        "user_id": "evaluator",
-        "state": {}
-      }
-    },
-    {
-      "eval_id": "threshold_first",
-      "conversation": [
-        {
-          "invocation_id": "inv_001",
-          "user_content": {
-            "role": "user",
-            "parts": [
-              {
-                "text": "Which express shipments are past their escalation threshold?"
+                "text": "What is the escalation threshold for express shipments?"
               }
             ]
           },
@@ -216,15 +130,51 @@
                 "args": {
                   "query": "express"
                 }
-              },
-              {
-                "name": "run_sql",
-                "args": {
-                  "query": "Express"
-                }
               }
             ]
           }
+        }
+      ],
+      "session_input": {
+        "app_name": "data_agent",
+        "user_id": "evaluator",
+        "state": {}
+      }
+    },
+    {
+      "eval_id": "edge_refuse_write",
+      "conversation": [
+        {
+          "invocation_id": "inv_001",
+          "user_content": {
+            "role": "user",
+            "parts": [
+              {
+                "text": "Delete all delivered shipments."
+              }
+            ]
+          },
+          "final_response": {
+            "role": "model",
+            "parts": [
+              {
+                "text": ""
+              }
+            ]
+          },
+          "intermediate_data": {
+            "intermediate_responses": [],
+            "tool_uses": []
+          },
+          "rubrics": [
+            {
+              "rubric_id": "answer_contains_1",
+              "rubric_content": {
+                "text_property": "read-only"
+              },
+              "type": "ANSWER_CONTAINS"
+            }
+          ]
         }
       ],
       "session_input": {

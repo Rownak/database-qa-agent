@@ -30,36 +30,36 @@ Every phase ends with the following (CLAUDE.md):
 
 **Goal:** golden cases are written in YAML and generated into committed ADK eval sets, with coverage and instruction coupling checked offline (design §4).
 
-- [ ] **Golden schema** (pydantic, strict) for a suite file: `suite`, `instruction_sha`, cases with `id`, `layer`, `rules`, `critical`, `state`, `variants`, `trajectory: any`, and `turns` (`q`, `tools`, `contains`, `contains_sql`, `excludes`, `sections`).
-- [ ] **State presets** `evals/golden/states/`: `default`, `no_docs`, `injection_docs`, `corrupt_upload` (design §4.2).
-- [ ] **Builder** `evals/adk/build.py` (`uv run python -m evals.adk.build`), which writes, per suite:
+- [x] **Golden schema** (pydantic, strict) for a suite file: `suite`, `instruction_sha`, cases with `id`, `layer`, `rules`, `critical`, `state`, `variants`, `trajectory: any`, and `turns` (`q`, `tools`, `contains`, `contains_sql`, `excludes`, `sections`).
+- [x] **State presets** `evals/golden/states/`: `default`, `no_docs`, `injection_docs`, `corrupt_upload` (design §4.2).
+- [x] **Builder** `evals/adk/build.py` (`uv run python -m evals.adk.build`), which writes, per suite:
   - `<suite>.test.json`: one invocation per turn, tool fragments in `tool_uses`, answer checks as typed `rubrics`, state from the preset, variants as `<id>__vN`
   - `manifest.json`: layer, rules, critical, group per case
   - `contains_sql` values computed on the bundled `shipments.csv`
-- [ ] **Builder validation:** reject an empty golden tool list without `trajectory: any`, unknown tools, duplicate ids, and a match type that does not fit the folder; flag redundant cases.
-- [ ] **Migrate** Sprint 10's `routing` and `hybrid` into `golden/unit_routing.yaml` and `golden/unit_hybrid.yaml` with layer-prefixed ids; generate them into `evals/adk/unit_routing/` and `evals/adk/unit_hybrid/`, and remove the old folders.
-- [ ] **Coverage matrix:** the builder prints rule × case counts for `INSTRUCTION` rules 1–14, with rule 11 as a known gap (design §4.4).
-- [ ] **Tests (offline):**
+- [x] **Builder validation:** reject an empty golden tool list without `trajectory: any`, unknown tools, duplicate ids, and a match type that does not fit the folder; flag redundant cases.
+- [x] **Migrate** Sprint 10's `routing` and `hybrid` into `golden/unit_routing.yaml` and `golden/unit_hybrid.yaml` with layer-prefixed ids; generate them into `evals/adk/unit_routing/` and `evals/adk/unit_hybrid/`, and remove the old folders.
+- [x] **Coverage matrix:** the builder prints rule × case counts for `INSTRUCTION` rules 1–14, with rule 11 as a known gap (design §4.4).
+- [x] **Tests (offline):**
   - generated JSON equals the committed JSON (stale check)
   - every rule has a case, and failure-mode rules have a negative or edge case
   - `instruction_sha` matches the current `INSTRUCTION` and tool docstrings
   - builder rejections; `contains_sql` fills the right value
   - update `test_adk_evalsets.py` to the new folders
-- [ ] **Dev script** `phase_11_1.py`: build, then print the coverage matrix and the case count per suite.
+- [x] **Dev script** `phase_11_1.py`: build, then print the coverage matrix and the case count per suite.
 
 ## Phase 11.2 — Answer and Citation Metrics
 
 **Goal:** the four new gating metrics score a final answer and its passages the same way the harness does (design §6).
 
-- [ ] **Adapter** in `evals/adk/metrics.py`: an ADK `Invocation` (final response, tool calls, tool responses) and its rubrics become the inputs of the `evals/metrics.py` functions.
-- [ ] **Metrics** `answer_contains`, `answer_excludes`, `section_retrieved` and `citation_grounded`. Each returns one result per invocation, takes its threshold from the criterion, and is `NOT_EVALUATED` when the invocation has no matching rubric (or, for `citation_grounded`, no citation).
-- [ ] **Register** all six gating metrics in every suite's `test_config.json`, written by the builder.
-- [ ] **Tests (offline):**
+- [x] **Adapter** in `evals/adk/metrics.py`: an ADK `Invocation` (final response, tool calls, tool responses) and its rubrics become the inputs of the `evals/metrics.py` functions.
+- [x] **Metrics** `answer_contains`, `answer_excludes`, `section_retrieved` and `citation_grounded`. Each returns one result per invocation, takes its threshold from the criterion, and is `NOT_EVALUATED` when the invocation has no matching rubric (or, for `citation_grounded`, no citation).
+- [x] **Register** all six gating metrics in every suite's `test_config.json`, written by the builder.
+- [x] **Tests (offline):**
   - pass and fail for each metric on hand-built invocations
   - an invocation without the rubric is `NOT_EVALUATED`, and ADK's final status ignores it
   - the same answer gives the same score through the adapter and through the harness function
   - every metric runs through ADK's `_CustomMetricEvaluator` from the real config
-- [ ] **Dev script** `phase_11_2.py`: score one hand-written answer with all metrics and print the results.
+- [x] **Dev script** `phase_11_2.py`: score one hand-written answer with all metrics and print the results.
 
 ## Phase 11.3 — Author the Suites
 

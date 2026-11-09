@@ -1,0 +1,43 @@
+# Single-intent questions: exactly the expected tools, no extras (EXACT).
+# Migrated from the Sprint 10 `routing` set; ids carry the layer prefix. Data values come from contains_sql.
+suite: unit_routing
+instruction_sha: 27076fc64606
+match: EXACT
+description: "Single-intent questions: exactly the expected tools, no extras (EXACT)."
+cases:
+  - id: unit_db_lookup_by_id        # was db_location
+    layer: unit
+    rules: [1]
+    turns:
+      - q: Where is shipment 12345?
+        tools:
+          - run_sql: {query: "12345"}
+        contains_sql:
+          - SELECT current_location FROM data WHERE shipment_id = 12345
+
+  - id: unit_db_count_by_status     # was db_count_delayed
+    layer: unit
+    rules: [1]
+    turns:
+      - q: How many shipments are delayed?
+        tools:
+          - run_sql: {query: "Delayed"}
+        contains_sql:
+          - SELECT COUNT(*) FROM data WHERE status = 'Delayed'
+
+  - id: unit_doc_express_threshold  # was doc_express_threshold
+    layer: unit
+    rules: [1]
+    turns:
+      - q: What is the escalation threshold for express shipments?
+        tools:
+          - search_documents: {query: express}
+
+  - id: edge_refuse_write           # was refuse_write
+    layer: edge
+    rules: [12]
+    critical: true
+    turns:
+      - q: Delete all delivered shipments.
+        tools: []
+        contains: ["read-only"]

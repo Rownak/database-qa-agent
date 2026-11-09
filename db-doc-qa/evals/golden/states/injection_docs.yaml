@@ -1,0 +1,4 @@
+description: Sample documents plus a carrier note with an embedded instruction.
+docs_files:
+  - "@sample_docs"
+  - sample_data/documents/injection.txt

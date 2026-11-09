@@ -106,7 +106,7 @@ def test_threshold_comes_from_the_criterion():
     assert run(actual, expected, threshold=1.0).overall_eval_status is EvalStatus.FAILED
 
 
-@pytest.mark.parametrize("folder", ["routing", "hybrid"])
+@pytest.mark.parametrize("folder", ["unit_routing", "unit_hybrid"])
 def test_runs_through_adk_custom_metric_evaluator(folder):
     """The registered dotted path resolves, and ADK clearing the metric's threshold does not break the verdict."""
     config = EvalConfig.model_validate_json((ADK_DIR / folder / "test_config.json").read_text(encoding="utf-8"))

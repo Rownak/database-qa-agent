@@ -1,0 +1,72 @@
+{
+  "suite": "unit_hybrid",
+  "instruction_sha": "27076fc64606",
+  "cases": [
+    {
+      "id": "unit_hybrid_record_to_policy",
+      "group": "unit_hybrid_record_to_policy",
+      "layer": "unit",
+      "rules": [
+        2
+      ],
+      "critical": false,
+      "match": "IN_ORDER",
+      "turns": 1,
+      "state": "default",
+      "folder": "unit_hybrid"
+    },
+    {
+      "id": "edge_conflicting_docs",
+      "group": "edge_conflicting_docs",
+      "layer": "edge",
+      "rules": [
+        7
+      ],
+      "critical": false,
+      "match": "IN_ORDER",
+      "turns": 1,
+      "state": "default",
+      "folder": "unit_hybrid"
+    },
+    {
+      "id": "edge_no_type_rule",
+      "group": "edge_no_type_rule",
+      "layer": "edge",
+      "rules": [
+        2,
+        6
+      ],
+      "critical": false,
+      "match": "IN_ORDER",
+      "turns": 1,
+      "state": "default",
+      "folder": "unit_hybrid"
+    },
+    {
+      "id": "edge_record_not_found",
+      "group": "edge_record_not_found",
+      "layer": "edge",
+      "rules": [
+        5
+      ],
+      "critical": false,
+      "match": "IN_ORDER",
+      "turns": 1,
+      "state": "default",
+      "folder": "unit_hybrid"
+    },
+    {
+      "id": "unit_hybrid_policy_then_filter",
+      "group": "unit_hybrid_policy_then_filter",
+      "layer": "unit",
+      "rules": [
+        3
+      ],
+      "critical": false,
+      "match": "IN_ORDER",
+      "turns": 1,
+      "state": "default",
+      "folder": "unit_hybrid"
+    }
+  ]
+}

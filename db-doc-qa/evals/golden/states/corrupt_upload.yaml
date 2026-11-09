@@ -1,0 +1,3 @@
+description: One unreadable upload; the sample data is used and a load notice is set.
+upload_files:
+  - sample_data/database/corrupt.xlsx
